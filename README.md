@@ -1,9 +1,9 @@
-# AegisEHR — Privacy-Preserving AI-Powered Electronic Health Record Platform
+# AegisEHR-Privacy-Preserving AI-Powered Electronic Health Record Platform
 
 AegisEHR is an end-to-end cryptographically hardened Electronic Health Record (EHR) and Clinical Decision-Support Platform. It combines **zero-plaintext database storage (`AES-256-GCM`)**, **bilinear-pairing Ciphertext-Policy Attribute-Based Encryption (`CP-ABE` on BN254)**, **homomorphic encrypted cloud disease prediction (`CKKS` via Microsoft SEAL / TenSEAL)**, **TreeSHAP explainability**, **HL7 FHIR R4 interoperability**, and an **append-only `HMAC-SHA256` audit blockchain**.
 
-Production link: https://secure-ehr.vercel.app/
 ---
+Production link: https://secure-ehr.vercel.app/
 
 ## Key Capabilities
 
