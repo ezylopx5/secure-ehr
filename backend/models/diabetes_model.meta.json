@@ -1,0 +1,7 @@
+{
+  "version": "trained-20261019183357",
+  "synthetic": false,
+  "rows_total": 400,
+  "rows_train": 320,
+  "rows_calibration": 80
+}

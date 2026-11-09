@@ -1,0 +1,9 @@
+backend/.venv
+backend/.pytest_cache
+backend/.secrets
+backend/ehr.db
+frontend/node_modules
+**/__pycache__
+*.pyc
+.git
+.env

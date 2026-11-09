@@ -1,0 +1,17 @@
+# Python / Backend
+backend/.venv/
+backend/.pytest_cache/
+backend/.secrets/
+backend/ehr.db
+**/__pycache__/
+*.py[cod]
+
+# Node / Frontend
+frontend/node_modules/
+
+# Environment & OS
+.env
+.DS_Store
+keys/*
+!keys/.gitkeep
+.vercel
