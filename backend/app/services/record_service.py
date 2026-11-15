@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.crypto.abe import ABEError, PolicyNotSatisfied, get_abe_authority
 from app.crypto.aes_gcm import decrypt_bytes, decrypt_json, encrypt_bytes, encrypt_json
-from app.crypto.integrity import md5_json, sha256_json
+from app.crypto.classical_crypto import des_encrypt, rsa_generate_keys
+from app.crypto.integrity import canonical_json, md5_json, sha256_json
 from app.crypto.key_manager import get_key_manager
 from app.db.models import MedicalRecord, Patient, User
 
@@ -126,12 +127,16 @@ def verify_record(db: Session, record: MedicalRecord) -> dict:
         )
         computed_sha256 = sha256_json(payload)
         computed_md5 = md5_json(payload)
+        des_hex = des_encrypt(canonical_json(payload)[:64], record.id[:8].upper())
+        rsa_keys = rsa_generate_keys()
         ok = computed_sha256 == record.plaintext_sha256
         return {
             "record_id": record.id,
             "integrity": "ok" if ok else "HASH-MISMATCH",
             "md5": computed_md5,
             "sha256": computed_sha256,
+            "des_cipher_preview": des_hex[:48],
+            "rsa_public_n": rsa_keys["n"],
         }
     except Exception as exc:  # noqa: BLE001
         return {
@@ -139,6 +144,8 @@ def verify_record(db: Session, record: MedicalRecord) -> dict:
             "integrity": f"DECRYPT-FAILED ({exc.__class__.__name__})",
             "md5": None,
             "sha256": None,
+            "des_cipher_preview": None,
+            "rsa_public_n": None,
         }
 
 

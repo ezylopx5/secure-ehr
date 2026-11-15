@@ -1,100 +1,71 @@
-# Cryptographic Algorithms & Security Specification — AegisEHR
+# Cryptographic Architecture — AegisEHR
 
-This document details the cryptographic algorithms implemented in **AegisEHR** ([`backend/app/crypto/classical_crypto.py`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py) and [`backend/app/crypto/`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto)).
-
----
-
-## 1. MD5 and SHA-256 to Generate Message Digests and Verify Message Integrity
-
-**Module:** [`backend/app/crypto/classical_crypto.py`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py) & [`backend/app/crypto/integrity.py`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/integrity.py)
-
-Every clinical record (`MedicalRecord`) and patient demographic profile (`Patient`) generates deterministic message digests over canonical JSON (`sort_keys=True, separators=(",", ":")`):
-
-- **MD5 (Message Digest 5):** Produces a 128-bit (32-character hexadecimal) fingerprint using 4 rounds of 16 non-linear bit operations over 512-bit blocks:
-  $$D_{\text{MD5}} = \text{MD5}(\text{CanonicalJSON}(\text{Record})) \in \{0,1\}^{128}$$
-- **SHA-256 (Secure Hash Algorithm 2):** Produces a 256-bit (64-character hexadecimal) collision-resistant digest using 64 rounds of Davies-Meyer compression:
-  $$D_{\text{SHA256}} = \text{SHA-256}(\text{CanonicalJSON}(\text{Record})) \in \{0,1\}^{256}$$
-- **Integrity Verification (`GET /api/patients/{id}/records/{rid}/verify`):**
-  Recomputes both `MD5` and `SHA-256` digests on read and compares them against the stored digest. Any 1-bit modification to a lab value or clinical note produces a completely different digest (avalanche effect) and flags `HASH-MISMATCH`.
+AegisEHR uses a clean, textbook-aligned **3-Pillar Cryptographic Architecture** where each syllabus algorithm is placed in its natural healthcare security role inside `backend/app/crypto/classical_crypto.py` and `backend/app/crypto/integrity.py`.
 
 ---
 
-## 2. Diffie–Hellman Key Exchange (DHKE)
+## 1. Encryption & Decryption using the Data Encryption Standard (DES)
+**EHR Role:** Symmetric encryption and decryption of clinical record payloads (lab panels, vitals, clinical notes) at rest.  
+**Implementation:** `backend/app/crypto/classical_crypto.py` (`des_encrypt`, `des_decrypt`)
 
-**Module:** [`diffie_hellman_exchange()`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py#L46-L79)
-
-Used to establish a shared secret session key between the **Hospital Portal (Alice)** and an **External Specialist / Cloud AI Node (Bob)** over an untrusted network:
-
-1. **Public Parameters:** Large safe prime $p = 4294967291$ (`0xFFFFFFFB`) and primitive root generator $g = 5$.
-2. **Private Keys:**
-   - Hospital selects secret integer $a \in [2, p-2]$.
-   - Specialist selects secret integer $b \in [2, p-2]$.
-3. **Public Key Exchange:**
-   $$A = g^a \bmod p, \qquad B = g^b \bmod p$$
-4. **Shared Secret Computation:**
-   $$S_{\text{Hospital}} = B^a \bmod p = (g^b)^a \bmod p = g^{ab} \bmod p$$
-   $$S_{\text{Specialist}} = A^b \bmod p = (g^a)^b \bmod p = g^{ab} \bmod p$$
-5. **Session Key Derivation:** The shared integer $S$ is hashed via SHA-256 to derive a 64-bit (8-byte) **DES Session Key**.
+### Mathematical & Structural Formulation
+DES is a 64-bit symmetric block cipher operating on a 16-round **Feistel network**:
+1. **Key Schedule (64-bit $\to$ 56-bit $\to$ sixteen 48-bit round subkeys):**
+   - Permuted Choice 1 ($\text{PC-1}$) extracts 56 active bits from the 8-byte key and splits them into two 28-bit halves $(C_0, D_0)$.
+   - For each round $i \in \{1, \dots, 16\}$, $C_i$ and $D_i$ are left-rotated by 1 or 2 bits according to the standard shift schedule, and Permuted Choice 2 ($\text{PC-2}$) selects 48-bit subkey $K_i$.
+2. **Initial Permutation ($IP$):**
+   $$\text{IP}(M) = L_0 \parallel R_0 \quad (32\text{ bits each})$$
+3. **16 Feistel Rounds ($i = 1, \dots, 16$):**
+   $$L_i = R_{i-1}$$
+   $$R_i = L_{i-1} \oplus f(R_{i-1}, K_i)$$
+   where the Feistel function $f(R, K_i)$ performs:
+   - **Expansion Permutation ($E$):** Expands 32-bit half-block $R$ to 48 bits.
+   - **Key Mixing:** Computes $B = E(R) \oplus K_i$.
+   - **S-Box Substitution:** Splits $B$ into eight 6-bit chunks $B_1 \dots B_8$; each $S_j(B_j)$ uses outer bits $(b_1 b_6)$ as row index $(0\text{--}3)$ and inner bits $(b_2 b_3 b_4 b_5)$ as column index $(0\text{--}15)$ to output 4 bits (total 32 bits).
+   - **P-Box Permutation ($P$):** Permutes the 32 S-box output bits across all S-boxes for avalanche diffusion.
+4. **Final Permutation ($FP = IP^{-1}$):**
+   $$C = \text{IP}^{-1}(R_{16} \parallel L_{16})$$
+5. **Decryption:** Uses the exact same Feistel structure with subkeys applied in reverse order $(K_{16}, K_{15}, \dots, K_1)$.
 
 ---
 
-## 3. RSA Public-Key Cryptosystem
+## 2. RSA Public-Key Cryptosystem
+**EHR Role:** Asymmetric key wrapping and cross-department sharing of clinical records between doctors and hospital departments.  
+**Implementation:** `backend/app/crypto/classical_crypto.py` (`rsa_generate_keys`, `rsa_encrypt_text`, `rsa_decrypt_cipher`)
 
-**Module:** [`rsa_generate_keys()`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py#L100-L143)
-
-Used for asymmetric encryption of clinical session keys and cross-departmental record sharing:
-
+### Mathematical Formulation
 1. **Key Generation:**
-   - Select two distinct primes $p = 6133$ and $q = 6143$.
-   - Compute modulus $n = p \times q = 37,675,019$.
-   - Compute Euler's totient $\phi(n) = (p - 1)(q - 1) = 37,662,744$.
-   - Choose public exponent $e = 65537$ such that $\gcd(e, \phi(n)) = 1$.
-   - Compute private exponent $d \equiv e^{-1} \pmod{\phi(n)}$ using the Extended Euclidean Algorithm (`d = 21712313`).
-2. **Encryption (with Public Key $(e, n)$):**
-   For each message byte $M_i \in [0, 255]$:
-   $$C_i = M_i^e \bmod n$$
-3. **Decryption (with Private Key $(d, n)$):**
-   $$M_i = C_i^d \bmod n$$
+   - Choose two distinct prime numbers $p$ and $q$.
+   - Compute the RSA modulus:
+     $$n = p \times q$$
+   - Compute Euler's totient function:
+     $$\phi(n) = (p - 1)(q - 1)$$
+   - Choose public exponent $e$ such that $1 < e < \phi(n)$ and $\gcd(e, \phi(n)) = 1$.
+   - Compute private exponent $d$ via the Extended Euclidean Algorithm as the modular multiplicative inverse of $e$:
+     $$d \equiv e^{-1} \pmod{\phi(n)} \iff e \cdot d \equiv 1 \pmod{\phi(n)}$$
+   - **Public Key:** $PK = (e, n)$
+   - **Private Key:** $SK = (d, n)$
+2. **Encryption (Wrapping key/record for authorized recipient):**
+   $$C = M^e \bmod n$$
+3. **Decryption (Unwrapping by authorized doctor):**
+   $$M = C^d \bmod n$$
 
 ---
 
-## 4. Data Encryption Standard (DES)
+## 3. MD5 and SHA-256 to Generate Message Digests and Verify Message Integrity
+**EHR Role:** Dual cryptographic message digest generation and tamper detection for every clinical record (`GET /api/patients/{id}/records/{rid}/verify`) plus hash-chained audit logging (`GET /api/audit/verify`).  
+**Implementation:** `backend/app/crypto/classical_crypto.py` (`generate_message_digests`, `verify_message_integrity`) and `backend/app/crypto/integrity.py`
 
-**Module:** [`des_encrypt()` & `des_decrypt()`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py#L254-L315)
-
-Implements the full FIPS 46-3 **Data Encryption Standard (DES)** 16-round Feistel network:
-
-- **Block Size:** 64 bits (8 bytes) with PKCS#5 padding.
-- **Key Schedule:** 64-bit key (56 effective bits after Permuted Choice 1 `PC-1`), split into 28-bit halves $(C_0, D_0)$, circularly left-shifted across 16 rounds, and compressed via `PC-2` into sixteen 48-bit round subkeys $K_1, \dots, K_{16}$.
-- **Feistel Encryption ($i = 1 \dots 16$):**
-  1. Apply Initial Permutation (`IP`) to 64-bit block $\to (L_0, R_0)$.
-  2. In each round $i$:
-     $$L_i = R_{i-1}, \qquad R_i = L_{i-1} \oplus f(R_{i-1}, K_i)$$
-     where $f(R, K_i)$ expands 32-bit $R$ to 48 bits via table $E$, XORs with $K_i$, substitutes through eight $6 \to 4$-bit **S-boxes** ($S_1 \dots S_8$), and permutes via 32-bit **P-box**.
-  3. Swap $(R_{16}, L_{16})$ and apply Final Permutation ($\text{IP}^{-1}$).
-- **Decryption:** Identical 16-round Feistel structure with subkeys applied in reverse order $(K_{16}, \dots, K_1)$.
-
----
-
-## 5. One-Time Pad (OTP — Vernam Cipher)
-
-**Module:** [`otp_encrypt()` & `otp_decrypt()`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py#L321-L343)
-
-Provides information-theoretic perfect secrecy (Shannon secrecy) for clinical notes:
-- Given plaintext bytes $P = (P_1, \dots, P_L)$, generate a true random key stream $K = (K_1, \dots, K_L)$ of equal length ($|K| = |P|$).
-- **Encryption:** $C_i = P_i \oplus K_i$
-- **Decryption:** $P_i = C_i \oplus K_i$
-
----
-
-## 6. Hill Cipher ($2 \times 2$ Matrix Modulo 26)
-
-**Module:** [`hill_encrypt()` & `hill_decrypt()`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py#L349-L398)
-
-Polygraphic substitution cipher based on linear algebra over $\mathbb{Z}_{26}$:
-- **Key Matrix:**
-  $$K = \begin{pmatrix} 3 & 3 \\ 2 & 5 \end{pmatrix} \pmod{26}, \qquad \det(K) = 15 - 6 = 9, \qquad \gcd(9, 26) = 1$$
-- **Encryption:** Pairs of letters $(P_1, P_2) \in \{0,\dots,25\}^2$ are multiplied by $K$:
-  $$\begin{pmatrix} C_1 \\ C_2 \end{pmatrix} = \begin{pmatrix} 3 & 3 \\ 2 & 5 \end{pmatrix} \begin{pmatrix} P_1 \\ P_2 \end{pmatrix} \bmod 26$$
-- **Decryption:** Since $9^{-1} \equiv 3 \pmod{26}$, the modular inverse matrix is:
-  $$K^{-1} = 3 \begin{pmatrix} 5 & -3 \\ -2 & 3 \end{pmatrix} \bmod 26 = \begin{pmatrix} 15 & 17 \\ 20 & 9 \end{pmatrix}, \qquad \begin{pmatrix} P_1 \\ P_2 \end{pmatrix} = K^{-1} \begin{pmatrix} C_1 \\ C_2 \end{pmatrix} \bmod 26$$
+### Mathematical Formulation
+1. **Canonical Serialization:**
+   Before hashing, clinical JSON payloads are serialized canonically (`sort_keys=True`, compact separators, UTF-8 encoding) so semantically identical records produce identical byte streams $m$.
+2. **Dual Digest Generation:**
+   - **MD5 (RFC 1321):** Processes 512-bit blocks through 4 rounds of 16 non-linear bit operations ($F, G, H, I$) to produce a **128-bit (32-hex-character)** fingerprint:
+     $$D_{\text{MD5}} = \text{MD5}(m) \in \{0,1\}^{128}$$
+   - **SHA-256 (FIPS 180-4):** Processes 512-bit blocks through 64 rounds of Davies–Meyer compression ($\Sigma_0, \Sigma_1, \text{Ch}, \text{Maj}$) to produce a **256-bit (64-hex-character)** digest:
+     $$D_{\text{SHA256}} = \text{SHA-256}(m) \in \{0,1\}^{256}$$
+3. **Message Integrity Verification:**
+   When a clinician or compliance auditor clicks **Verify MD5 & SHA-256 Integrity** on a clinical record, the backend recomputes both digests and verifies:
+   $$\text{Integrity}(m) = \bigl(\text{MD5}(m) \stackrel{?}{=} D_{\text{MD5}}\bigr) \land \bigl(\text{SHA-256}(m) \stackrel{?}{=} D_{\text{SHA256}}\bigr)$$
+   Additionally, the audit ledger links every clinical event $k$ to its predecessor via:
+   $$\text{block\_hash}_k = \text{SHA-256}(\text{prev\_hash}_{k-1} \parallel \text{canonical\_json}(\text{event}_k))$$

@@ -140,35 +140,14 @@ class RecordSummary(BaseModel):
 
 
 class RecordIntegrityView(BaseModel):
-    """Integrity verification status (MD5 + SHA-256 digests)."""
+    """Integrity verification status (MD5 + SHA-256 digests + DES/RSA metadata)."""
 
     record_id: str
     integrity: str
     md5: str | None = None
     sha256: str | None = None
-
-
-class CryptoLabRequest(BaseModel):
-    """Interactive syllabus cryptography lab request."""
-
-    sample_text: str = Field(
-        default="Patient Aarav Patel | LDL=138 mg/dL | Troponin=0.012 ng/mL",
-        min_length=1,
-        max_length=512,
-    )
-    des_key: str = Field(default="AEGISEHR", min_length=1, max_length=32)
-
-
-class CryptoLabResponse(BaseModel):
-    """Step-by-step output of all 6 syllabus cryptographic algorithms."""
-
-    input_text: str
-    digests: dict[str, Any]
-    diffie_hellman: dict[str, Any]
-    rsa: dict[str, Any]
-    des: dict[str, Any]
-    one_time_pad: dict[str, Any]
-    hill_cipher: dict[str, Any]
+    des_cipher_preview: str | None = None
+    rsa_public_n: int | None = None
 
 
 class ConsentGrantRequest(BaseModel):

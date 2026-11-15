@@ -55,61 +55,8 @@ export interface RecordIntegrityView {
   integrity: string;
   md5?: string | null;
   sha256?: string | null;
-}
-
-export interface CryptoLabResponse {
-  input_text: string;
-  digests: {
-    md5: string;
-    sha1: string;
-    sha256: string;
-    md5_verified: boolean;
-    sha256_verified: boolean;
-    integrity_ok: boolean;
-  };
-  diffie_hellman: {
-    prime_p: number;
-    generator_g: number;
-    alice_private_a: number;
-    bob_private_b: number;
-    alice_public_A: number;
-    bob_public_B: number;
-    shared_secret_alice: number;
-    shared_secret_bob: number;
-    keys_match: boolean;
-    derived_des_key_hex: string;
-  };
-  rsa: {
-    p: number;
-    q: number;
-    modulus_n: number;
-    totient_phi: number;
-    public_exponent_e: number;
-    private_exponent_d: number;
-    ciphertext_blocks: number[];
-    total_blocks: number;
-    decrypted_text: string;
-    verified: boolean;
-  };
-  des: {
-    key_ascii: string;
-    ciphertext_hex: string;
-    decrypted_text: string;
-    verified: boolean;
-  };
-  one_time_pad: {
-    ciphertext_hex: string;
-    pad_key_hex: string;
-    decrypted_text: string;
-    verified: boolean;
-  };
-  hill_cipher: {
-    key_matrix: number[][];
-    normalized_plaintext: string;
-    ciphertext: string;
-    decrypted_text: string;
-    verified: boolean;
-  };
+  des_cipher_preview?: string | null;
+  rsa_public_n?: number | null;
 }
 
 export interface ConsentView {

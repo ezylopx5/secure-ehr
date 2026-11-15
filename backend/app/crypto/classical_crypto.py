@@ -1,33 +1,25 @@
-"""Classical and Foundational Cryptographic Algorithms for AegisEHR.
+"""Core Cryptographic Primitives for AegisEHR.
 
-Implements the six core syllabus algorithms in clear, textbook-verifiable Python:
-1. MD5 and SHA-256 Message Digests & Integrity Verification
-2. Diffie-Hellman Key Exchange (DHKE)
-3. RSA Public-Key Cryptosystem (Key Generation, Encryption, Decryption)
-4. Data Encryption Standard (DES - 16-Round Feistel Network, 64-bit blocks)
-5. One-Time Pad (OTP - Vernam XOR Cipher)
-6. Hill Cipher (2x2 Matrix Modulo-26 Polygraphic Substitution)
+Uses three foundational algorithms, each mapped to its natural EHR security role:
+1. Data Encryption Standard (DES) -> Symmetric block encryption of clinical records
+2. RSA Cryptosystem               -> Asymmetric public-key wrapping for doctor record sharing
+3. MD5 & SHA-256 Message Digests  -> Record integrity verification & tamper detection
 """
 from __future__ import annotations
 
 import hashlib
-import secrets
 from typing import Any
 
 
 # ============================================================================
-# 1. MD5 & SHA-256 Message Digests and Integrity Verification
+# 1. MD5 & SHA-256 Message Digests for Record Integrity Verification
 # ============================================================================
 def generate_message_digests(message: str | bytes) -> dict[str, str]:
     """Compute both 128-bit MD5 and 256-bit SHA-256 hex digests."""
     raw = message.encode("utf-8") if isinstance(message, str) else message
-    md5_hex = hashlib.md5(raw).hexdigest()
-    sha1_hex = hashlib.sha1(raw).hexdigest()
-    sha256_hex = hashlib.sha256(raw).hexdigest()
     return {
-        "md5": md5_hex,
-        "sha1": sha1_hex,
-        "sha256": sha256_hex,
+        "md5": hashlib.md5(raw).hexdigest(),
+        "sha256": hashlib.sha256(raw).hexdigest(),
     }
 
 
@@ -36,13 +28,12 @@ def verify_message_integrity(
     expected_md5: str | None = None,
     expected_sha256: str | None = None,
 ) -> dict[str, Any]:
-    """Verify message integrity by comparing recomputed MD5 and SHA-256 digests."""
+    """Verify clinical record integrity by comparing recomputed MD5 and SHA-256 digests."""
     digests = generate_message_digests(message)
     md5_match = True if expected_md5 is None else (digests["md5"] == expected_md5)
     sha_match = True if expected_sha256 is None else (digests["sha256"] == expected_sha256)
     return {
         "md5": digests["md5"],
-        "sha1": digests["sha1"],
         "sha256": digests["sha256"],
         "md5_verified": md5_match,
         "sha256_verified": sha_match,
@@ -51,53 +42,11 @@ def verify_message_integrity(
 
 
 # ============================================================================
-# 2. Diffie-Hellman Key Exchange (DHKE)
+# 2. RSA Cryptosystem for Asymmetric Record Key Wrapping & Sharing
 # ============================================================================
-# Public prime p and primitive root g (RFC 3526 / textbook prime for fast demo)
-DEFAULT_DH_P = 0xFFFFFFFB  # 4294967291 (large 32-bit safe prime for readable math)
-DEFAULT_DH_G = 5
-
-
-def diffie_hellman_exchange(
-    private_a: int | None = None,
-    private_b: int | None = None,
-    p: int = DEFAULT_DH_P,
-    g: int = DEFAULT_DH_G,
-) -> dict[str, Any]:
-    """Simulate a complete Diffie-Hellman key exchange between Hospital (Alice)
-    and Cloud AI / Specialist (Bob):
-        A = g^a mod p
-        B = g^b mod p
-        Shared Secret S = B^a mod p == A^b mod p
-    """
-    a = private_a if private_a is not None else (secrets.randbelow(p - 3) + 2)
-    b = private_b if private_b is not None else (secrets.randbelow(p - 3) + 2)
-    public_a = pow(g, a, p)
-    public_b = pow(g, b, p)
-    shared_alice = pow(public_b, a, p)
-    shared_bob = pow(public_a, b, p)
-    session_key_sha256 = hashlib.sha256(str(shared_alice).encode("utf-8")).hexdigest()[:32]
-    return {
-        "prime_p": p,
-        "generator_g": g,
-        "alice_private_a": a,
-        "bob_private_b": b,
-        "alice_public_A": public_a,
-        "bob_public_B": public_b,
-        "shared_secret_alice": shared_alice,
-        "shared_secret_bob": shared_bob,
-        "keys_match": shared_alice == shared_bob,
-        "derived_des_key_hex": session_key_sha256[:16],
-    }
-
-
-# ============================================================================
-# 3. RSA Cryptosystem (Key Generation, Encryption, Decryption)
-# ============================================================================
-# Deterministic textbook primes for clear viva demonstration & fast execution
-RSA_DEMO_P = 6133
-RSA_DEMO_Q = 6143
-RSA_DEMO_E = 65537
+RSA_P = 6133
+RSA_Q = 6143
+RSA_E = 65537
 
 
 def _egcd(a: int, b: int) -> tuple[int, int, int]:
@@ -115,7 +64,7 @@ def _modinv(a: int, m: int) -> int:
 
 
 def rsa_generate_keys(
-    p: int = RSA_DEMO_P, q: int = RSA_DEMO_Q, e: int = RSA_DEMO_E
+    p: int = RSA_P, q: int = RSA_Q, e: int = RSA_E
 ) -> dict[str, int]:
     """Compute RSA public key (e, n) and private key (d, n) from primes p and q."""
     n = p * q
@@ -135,28 +84,9 @@ def rsa_decrypt_cipher(cipher_blocks: list[int], d: int, n: int) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def rsa_demo_roundtrip(plaintext: str) -> dict[str, Any]:
-    keys = rsa_generate_keys()
-    cipher_blocks = rsa_encrypt_text(plaintext, keys["e"], keys["n"])
-    recovered = rsa_decrypt_cipher(cipher_blocks, keys["d"], keys["n"])
-    return {
-        "p": keys["p"],
-        "q": keys["q"],
-        "modulus_n": keys["n"],
-        "totient_phi": keys["phi"],
-        "public_exponent_e": keys["e"],
-        "private_exponent_d": keys["d"],
-        "ciphertext_blocks": cipher_blocks[:24],
-        "total_blocks": len(cipher_blocks),
-        "decrypted_text": recovered,
-        "verified": recovered == plaintext,
-    }
-
-
 # ============================================================================
-# 4. Data Encryption Standard (DES - 16-Round Feistel Cipher)
+# 3. Data Encryption Standard (DES - 16-Round Feistel Cipher) for Record Storage
 # ============================================================================
-# Standard FIPS 46-3 DES Tables
 _IP = [
     58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
     62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8,
@@ -200,56 +130,48 @@ _PC2 = [
 _SHIFTS = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1]
 
 _SBOX = [
-    # S1
     [
         [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7],
         [0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8],
         [4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0],
         [15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13],
     ],
-    # S2
     [
         [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10],
         [3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5],
         [0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15],
         [13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9],
     ],
-    # S3
     [
         [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8],
         [13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1],
         [13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7],
         [1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12],
     ],
-    # S4
     [
         [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15],
         [13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9],
         [10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4],
         [3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14],
     ],
-    # S5
     [
         [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9],
         [14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6],
         [4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14],
         [11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3],
     ],
-    # S6
     [
         [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11],
         [10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8],
         [9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6],
         [4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13],
     ],
-    # S7
     [
         [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1],
         [13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6],
         [1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2],
         [6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12],
     ],
-    # S8
     [
         [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7],
         [1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2],
@@ -300,7 +222,7 @@ def _feistel(right32: list[int], subkey48: list[int]) -> list[int]:
     for i in range(8):
         chunk = xored[i * 6 : (i + 1) * 6]
         row = (chunk[0] << 1) | chunk[5]
-        col = (chunk[1] << 3) | (chunk[2] << 2) | (chunk[3] << 1) | chunk[4]
+        col = (chunk[1] << 3) | (chunk[2] << 2) | (chunk[3] << 1) | (chunk[4])
         val = _SBOX[i][row][col]
         sbox_out.extend([(val >> (3 - bit)) & 1 for bit in range(4)])
     return _permute(sbox_out, _P)
@@ -339,126 +261,3 @@ def des_decrypt(cipher_hex: str, key_str: str = "AEGISEHR") -> str:
     if 1 <= pad_len <= 8:
         out = out[:-pad_len]
     return bytes(out).decode("utf-8", errors="replace")
-
-
-# ============================================================================
-# 5. One-Time Pad (OTP - Vernam Cipher)
-# ============================================================================
-def otp_encrypt(plaintext: str, key_hex: str | None = None) -> dict[str, str]:
-    """XOR each byte of plaintext with an equal-length random pad K."""
-    raw = plaintext.encode("utf-8")
-    if key_hex:
-        pad = bytes.fromhex(key_hex)
-        if len(pad) < len(raw):
-            pad = (pad * ((len(raw) // len(pad)) + 1))[: len(raw)]
-    else:
-        pad = secrets.token_bytes(len(raw))
-    cipher = bytes([p ^ k for p, k in zip(raw, pad)])
-    return {
-        "ciphertext_hex": cipher.hex(),
-        "pad_key_hex": pad[: len(raw)].hex(),
-    }
-
-
-def otp_decrypt(ciphertext_hex: str, pad_key_hex: str) -> str:
-    cipher = bytes.fromhex(ciphertext_hex)
-    pad = bytes.fromhex(pad_key_hex)
-    plain = bytes([c ^ k for c, k in zip(cipher, pad)])
-    return plain.decode("utf-8", errors="replace")
-
-
-# ============================================================================
-# 6. Hill Cipher (2x2 Matrix Modulo 26)
-# ============================================================================
-# Default invertible key matrix mod 26: [[3, 3], [2, 5]], det = 15 - 6 = 9, gcd(9,26) = 1
-DEFAULT_HILL_MATRIX = [[3, 3], [2, 5]]
-
-
-def _hill_clean(text: str) -> str:
-    cleaned = "".join(ch.upper() for ch in text if ch.isalpha())
-    if not cleaned:
-        cleaned = "AEGISEHR"
-    if len(cleaned) % 2 == 1:
-        cleaned += "X"
-    return cleaned
-
-
-def hill_encrypt(plaintext: str, matrix: list[list[int]] | None = None) -> dict[str, Any]:
-    """Encrypt alphabetic characters using a 2x2 Hill matrix modulo 26."""
-    k = matrix or DEFAULT_HILL_MATRIX
-    clean = _hill_clean(plaintext)
-    out: list[str] = []
-    for i in range(0, len(clean), 2):
-        v0 = ord(clean[i]) - 65
-        v1 = ord(clean[i + 1]) - 65
-        c0 = (k[0][0] * v0 + k[0][1] * v1) % 26
-        c1 = (k[1][0] * v0 + k[1][1] * v1) % 26
-        out.append(chr(c0 + 65))
-        out.append(chr(c1 + 65))
-    ciphertext = "".join(out)
-    return {
-        "key_matrix": k,
-        "normalized_plaintext": clean,
-        "ciphertext": ciphertext,
-    }
-
-
-def hill_decrypt(ciphertext: str, matrix: list[list[int]] | None = None) -> str:
-    """Decrypt 2x2 Hill ciphertext using the modular matrix inverse mod 26."""
-    k = matrix or DEFAULT_HILL_MATRIX
-    det = (k[0][0] * k[1][1] - k[0][1] * k[1][0]) % 26
-    det_inv = _modinv(det, 26)
-    inv_k = [
-        [(k[1][1] * det_inv) % 26, (-k[0][1] * det_inv) % 26],
-        [(-k[1][0] * det_inv) % 26, (k[0][0] * det_inv) % 26],
-    ]
-    clean = _hill_clean(ciphertext)
-    out: list[str] = []
-    for i in range(0, len(clean), 2):
-        c0 = ord(clean[i]) - 65
-        c1 = ord(clean[i + 1]) - 65
-        p0 = (inv_k[0][0] * c0 + inv_k[0][1] * c1) % 26
-        p1 = (inv_k[1][0] * c0 + inv_k[1][1] * c1) % 26
-        out.append(chr(p0 + 65))
-        out.append(chr(p1 + 65))
-    return "".join(out)
-
-
-def run_all_classical_demos(sample_text: str, des_key: str = "AEGISEHR") -> dict[str, Any]:
-    """Run all six syllabus cryptographic algorithms on ``sample_text`` and
-    return a structured, step-by-step comparison for the UI lab and viva."""
-    digests = verify_message_integrity(sample_text)
-    dh = diffie_hellman_exchange()
-    rsa_res = rsa_demo_roundtrip(sample_text)
-    des_ct = des_encrypt(sample_text, des_key)
-    des_pt = des_decrypt(des_ct, des_key)
-    otp_res = otp_encrypt(sample_text)
-    otp_pt = otp_decrypt(otp_res["ciphertext_hex"], otp_res["pad_key_hex"])
-    hill_res = hill_encrypt(sample_text)
-    hill_pt = hill_decrypt(hill_res["ciphertext"], hill_res["key_matrix"])
-
-    return {
-        "input_text": sample_text,
-        "digests": digests,
-        "diffie_hellman": dh,
-        "rsa": rsa_res,
-        "des": {
-            "key_ascii": des_key[:8].ljust(8, "0"),
-            "ciphertext_hex": des_ct,
-            "decrypted_text": des_pt,
-            "verified": des_pt == sample_text,
-        },
-        "one_time_pad": {
-            "ciphertext_hex": otp_res["ciphertext_hex"],
-            "pad_key_hex": otp_res["pad_key_hex"],
-            "decrypted_text": otp_pt,
-            "verified": otp_pt == sample_text,
-        },
-        "hill_cipher": {
-            "key_matrix": hill_res["key_matrix"],
-            "normalized_plaintext": hill_res["normalized_plaintext"],
-            "ciphertext": hill_res["ciphertext"],
-            "decrypted_text": hill_pt,
-            "verified": hill_pt == hill_res["normalized_plaintext"],
-        },
-    }

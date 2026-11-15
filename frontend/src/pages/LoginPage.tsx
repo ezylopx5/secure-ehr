@@ -10,7 +10,7 @@ const DEMO_ACCOUNTS = [
     dept: "Cardiology • Primary Physician",
     username: "doctor1",
     password: "Doctor12345",
-    summary: "Encrypt records via DES/OTP, share keys via RSA & Diffie–Hellman, and run AI risk models",
+    summary: "Decrypt consented DES records, share records via RSA keys & run AI disease risk models",
   },
   {
     role: "Patient",
@@ -37,7 +37,7 @@ const DEMO_ACCOUNTS = [
     dept: "Hospital Operations • Break-Glass",
     username: "admin",
     password: "Admin12345",
-    summary: "Onboard encrypted patient profiles, test the Crypto Workbench & oversee platform health",
+    summary: "Onboard encrypted patient profiles, manage access & oversee platform health",
   },
 ];
 
@@ -63,7 +63,7 @@ export function LoginPage() {
           organization: "nitsurat-hospital",
           department: "general",
         });
-        setLocalMsg("Account created and RSA / Diffie–Hellman keys issued. Signing in…");
+        setLocalMsg("Account created and RSA key pair issued. Signing in…");
         await login(username, password);
       } catch (err) {
         setLocalMsg(err instanceof Error ? err.message : "Registration failed");
@@ -101,34 +101,34 @@ export function LoginPage() {
               </div>
               <div>
                 <span className="auth-brand-name">AegisEHR</span>
-                <span className="auth-brand-tag">Cryptographic &amp; AI Clinical Portal</span>
+                <span className="auth-brand-tag">Secure Clinical &amp; AI Platform</span>
               </div>
             </div>
 
             <div className="auth-hero">
-              <div className="auth-kicker">CRYPTOGRAPHY &amp; NETWORK SECURITY IN HEALTHCARE</div>
+              <div className="auth-kicker">CRYPTOGRAPHIC HEALTHCARE PLATFORM</div>
               <h1>Secure AI-Powered Electronic Health Records</h1>
               <p>
-                Protecting patient records with DES block encryption, RSA public-key wrapping, Diffie–Hellman session key exchange, One-Time Pad (OTP), Hill Cipher, and MD5 / SHA-256 message digest verification.
+                Protecting patient records with Data Encryption Standard (DES) block encryption, RSA public-key sharing across hospital departments, and MD5 / SHA-256 message digests for integrity verification.
               </p>
             </div>
 
             <div className="auth-metrics-grid">
               <div className="auth-metric-box">
-                <span className="auth-metric-val">DES &amp; OTP</span>
-                <span className="auth-metric-lbl">16-Round Feistel &amp; Vernam XOR</span>
+                <span className="auth-metric-val">DES (64-Bit)</span>
+                <span className="auth-metric-lbl">16-Round Feistel Record Cipher</span>
               </div>
               <div className="auth-metric-box">
-                <span className="auth-metric-val">RSA &amp; DHKE</span>
-                <span className="auth-metric-lbl">Public-Key &amp; Session Exchange</span>
+                <span className="auth-metric-val">RSA Public-Key</span>
+                <span className="auth-metric-lbl">Doctor Record Key Sharing</span>
               </div>
               <div className="auth-metric-box">
                 <span className="auth-metric-val">MD5 &amp; SHA-256</span>
-                <span className="auth-metric-lbl">Message Digest &amp; Integrity</span>
+                <span className="auth-metric-lbl">Message Digest Integrity</span>
               </div>
               <div className="auth-metric-box">
-                <span className="auth-metric-val">Hill Cipher</span>
-                <span className="auth-metric-lbl">2×2 Matrix Modulo-26</span>
+                <span className="auth-metric-val">XGBoost + SHAP</span>
+                <span className="auth-metric-lbl">4-Disease Explainable AI</span>
               </div>
             </div>
           </div>
@@ -137,22 +137,22 @@ export function LoginPage() {
             <div className="feature-pill">
               <span className="dot dot-teal" />
               <div>
-                <strong>Symmetric &amp; Classical Encryption (DES, OTP, Hill Cipher)</strong>
-                <span>64-bit Feistel DES blocks, One-Time Pad XOR, and 2×2 matrix substitution</span>
+                <strong>DES Symmetric Record Encryption</strong>
+                <span>16-round Feistel network protecting clinical biomarkers and notes at rest</span>
               </div>
             </div>
             <div className="feature-pill">
               <span className="dot dot-blue" />
               <div>
-                <strong>Asymmetric Key Exchange (RSA &amp; Diffie–Hellman)</strong>
-                <span>Shared secret establishment (g^(ab) mod p) and RSA (C = M^e mod n) key wrapping</span>
+                <strong>RSA Cryptosystem for Department Sharing</strong>
+                <span>Asymmetric public-key wrapping (C = M^e mod n) for authorized physicians</span>
               </div>
             </div>
             <div className="feature-pill">
               <span className="dot dot-indigo" />
               <div>
-                <strong>Message Digests (MD5 &amp; SHA-256) + Explainable AI</strong>
-                <span>Tamper detection via MD5/SHA-256 digests + 4-disease XGBoost &amp; TreeSHAP</span>
+                <strong>MD5 &amp; SHA-256 Message Digests + Explainable AI</strong>
+                <span>Tamper-evident hash verification alongside Diabetes, Heart, Liver &amp; Kidney AI</span>
               </div>
             </div>
           </div>
@@ -234,7 +234,7 @@ export function LoginPage() {
 
             <button type="submit" className="btn-primary btn-full btn-lg" disabled={loading}>
               {loading
-                ? "Authenticating & Generating DH Session Key…"
+                ? "Authenticating…"
                 : mode === "login"
                   ? "Enter Clinical Workspace →"
                   : "Generate RSA Keys & Register →"}

@@ -4,7 +4,6 @@ import { useAuth } from "../context/AuthContext";
 import type {
   ChatMessageView,
   ConsentView,
-  CryptoLabResponse,
   DiseaseKey,
   DiseaseSpecView,
   FhirExportView,
@@ -19,12 +18,7 @@ import type {
   RecordView,
 } from "../types";
 
-type WorkspaceSubTab =
-  | "records"
-  | "cryptolab"
-  | "predictions"
-  | "assistant"
-  | "governance";
+type WorkspaceSubTab = "records" | "predictions" | "assistant" | "governance";
 
 const QUICK_PROMPTS = [
   "Summarize the patient's cardiovascular biomarkers and lipid panel status.",
@@ -69,13 +63,6 @@ export function PatientWorkspacePage() {
   const [chatPrompt, setChatPrompt] = useState<string>(
     "Summarize the patient's latest encrypted disease risk drivers and clinical notes."
   );
-
-  // Interactive Cryptography Lab state
-  const [labText, setLabText] = useState<string>(
-    "Patient Aarav Patel | MRN-DEMO-0001 | LDL=138 mg/dL | Troponin=0.012 ng/mL"
-  );
-  const [labDesKey, setLabDesKey] = useState<string>("AEGISEHR");
-  const [cryptoLabResult, setCryptoLabResult] = useState<CryptoLabResponse | null>(null);
 
   // New Patient Modal state
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
@@ -138,19 +125,12 @@ export function PatientWorkspacePage() {
 
   const loadInitialCatalogs = useCallback(async () => {
     try {
-      const [patientRows, diseaseSpecs, labInit] = await Promise.all([
+      const [patientRows, diseaseSpecs] = await Promise.all([
         api.listPatients(),
         api.listDiseases(),
-        api.runCryptoLab(
-          "Patient Aarav Patel | MRN-DEMO-0001 | LDL=138 mg/dL | Troponin=0.012 ng/mL",
-          "AEGISEHR"
-        ).catch(() => null),
       ]);
       setPatients(patientRows);
       setDiseases(diseaseSpecs);
-      if (labInit) {
-        setCryptoLabResult(labInit);
-      }
       if (patientRows.length > 0 && !selectedPatientId) {
         setSelectedPatientId(patientRows[0].id);
       }
@@ -185,7 +165,6 @@ export function PatientWorkspacePage() {
         const chats = await api.listChatHistory(patientId).catch(() => []);
         setChatHistory(chats);
 
-        // Automatically decrypt the first 2 records so the clinical view is immediately populated
         const autoDec: Record<string, RecordView> = {};
         await Promise.all(
           recordRows.slice(0, 2).map(async (r) => {
@@ -306,7 +285,7 @@ export function PatientWorkspacePage() {
     try {
       await api.shareRecordWithPolicy(recordId, abePolicy);
       await loadPatientData(selectedPatientId);
-      setStatusMessage(`Wrapped record ${recordId.slice(0, 8)} for cross-department sharing (${abePolicy}).`);
+      setStatusMessage(`Wrapped record ${recordId.slice(0, 8)} under RSA & department policy (${abePolicy}).`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Key share failed");
     } finally {
@@ -320,26 +299,9 @@ export function PatientWorkspacePage() {
     try {
       const opened = await api.openAbeRecord(recordId);
       setDecryptedRecords((prev) => ({ ...prev, [recordId]: opened }));
-      setStatusMessage(`Decrypted shared record via ${user?.username}'s authorized key.`);
+      setStatusMessage(`Decrypted shared record via ${user?.username}'s authorized private key.`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Access policy not satisfied");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleRunCryptoLab = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setErrorMessage(null);
-    try {
-      const res = await api.runCryptoLab(labText, labDesKey);
-      setCryptoLabResult(res);
-      setStatusMessage(
-        "Executed DES, RSA, Diffie–Hellman, One-Time Pad, Hill Cipher, and MD5/SHA-256 digests."
-      );
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Crypto Lab execution failed");
     } finally {
       setBusy(false);
     }
@@ -511,7 +473,7 @@ export function PatientWorkspacePage() {
         {user && (
           <div className="attribute-box">
             <div className="attribute-box-header">
-              <span className="attribute-box-title">Active Crypto &amp; Role Keys</span>
+              <span className="attribute-box-title">Authorized Role Attributes</span>
               <span className="attribute-count-badge">{user.attributes.length} keys</span>
             </div>
             <div className="attr-list">
@@ -556,18 +518,18 @@ export function PatientWorkspacePage() {
             <span className="kpi-label">Encrypted Clinical Records</span>
             <div className="kpi-value-row">
               <strong className="kpi-value">{records.length}</strong>
-              <span className="kpi-tag kpi-tag-blue">DES / OTP / AES</span>
+              <span className="kpi-tag kpi-tag-blue">DES Block Cipher</span>
             </div>
-            <span className="kpi-sub">Block &amp; stream cipher protection</span>
+            <span className="kpi-sub">16-round Feistel record encryption</span>
           </div>
 
           <div className="kpi-card">
-            <span className="kpi-label">Key Exchange &amp; Sharing</span>
+            <span className="kpi-label">Doctor Record Sharing</span>
             <div className="kpi-value-row">
               <strong className="kpi-value">Active</strong>
-              <span className="kpi-tag kpi-tag-teal">RSA &amp; Diffie–Hellman</span>
+              <span className="kpi-tag kpi-tag-teal">RSA Public-Key</span>
             </div>
-            <span className="kpi-sub">Asymmetric key wrapping &amp; DHKE</span>
+            <span className="kpi-sub">Asymmetric key wrapping (C = M^e mod n)</span>
           </div>
 
           <div className="kpi-card">
@@ -580,12 +542,12 @@ export function PatientWorkspacePage() {
           </div>
 
           <div className="kpi-card">
-            <span className="kpi-label">Classical &amp; AI Suite</span>
+            <span className="kpi-label">Explainable Clinical AI</span>
             <div className="kpi-value-row">
-              <strong className="kpi-value">6 Ciphers</strong>
-              <span className="kpi-tag kpi-tag-purple">Hill + OTP + AI</span>
+              <strong className="kpi-value">{storedPredictions.length}</strong>
+              <span className="kpi-tag kpi-tag-purple">XGBoost + SHAP</span>
             </div>
-            <span className="kpi-sub">2×2 Hill matrix + 4 Disease ML models</span>
+            <span className="kpi-sub">4 disease cohorts + TreeSHAP drivers</span>
           </div>
         </div>
 
@@ -617,7 +579,7 @@ export function PatientWorkspacePage() {
                       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                       <path d="m9 12 2 2 4-4" />
                     </svg>
-                    DES / RSA Encrypted • MD5 &amp; SHA-256 Verified
+                    DES Encrypted • MD5 &amp; SHA-256 Verified
                   </span>
                 </div>
                 {patientView ? (
@@ -671,21 +633,13 @@ export function PatientWorkspacePage() {
               <span>Clinical Records (DES / RSA / MD5)</span>
               <span className="subnav-count">{records.length}</span>
             </button>
-            <button
-              type="button"
-              className={subTab === "cryptolab" ? "subnav-btn active" : "subnav-btn"}
-              onClick={() => setSubTab("cryptolab")}
-            >
-              <span>Crypto Algorithms Lab</span>
-              <span className="subnav-count">6 Ciphers</span>
-            </button>
             {user?.role !== "auditor" && (
               <button
                 type="button"
                 className={subTab === "predictions" ? "subnav-btn active" : "subnav-btn"}
                 onClick={() => setSubTab("predictions")}
               >
-                <span>Encrypted AI Disease Risk</span>
+                <span>AI Disease Risk Models</span>
                 <span className="subnav-count">{storedPredictions.length}</span>
               </button>
             )}
@@ -719,7 +673,7 @@ export function PatientWorkspacePage() {
                 <div>
                   <h3>Encrypted Medical Records &amp; Message Digest Verification</h3>
                   <p>
-                    Records are encrypted at rest, shared across departments via RSA / policy key wrapping, and verified for tamper detection using <strong>MD5 (128-bit)</strong> and <strong>SHA-256 (256-bit)</strong> message digests.
+                    Records are encrypted at rest with <strong>DES</strong>, shared across departments via <strong>RSA Public-Key Wrapping</strong>, and verified against tampering using <strong>MD5 (128-bit)</strong> and <strong>SHA-256 (256-bit)</strong> message digests.
                   </p>
                 </div>
               </div>
@@ -746,8 +700,8 @@ export function PatientWorkspacePage() {
                               {new Date(rec.created_at).toLocaleDateString()}
                             </span>
                             {rec.abe_policy && (
-                              <span className="pill pill-amber" title="Shared Policy">
-                                RSA/Policy: {rec.abe_policy}
+                              <span className="pill pill-amber" title="RSA Shared Policy">
+                                RSA Shared: {rec.abe_policy}
                               </span>
                             )}
                             {ver && (
@@ -768,7 +722,7 @@ export function PatientWorkspacePage() {
                                 className="btn-secondary btn-sm"
                                 onClick={() => void handleDecryptRecord(rec.id)}
                               >
-                                {dec ? "Re-Decrypt" : "Decrypt Record"}
+                                {dec ? "Re-Decrypt (DES)" : "Decrypt Record (DES)"}
                               </button>
                             )}
                             <button
@@ -785,7 +739,7 @@ export function PatientWorkspacePage() {
                                 onClick={() => void handleShareAbe(rec.id)}
                                 disabled={busy}
                               >
-                                Share via RSA / Policy
+                                Share via RSA Key
                               </button>
                             )}
                             {rec.abe_policy && (
@@ -795,7 +749,7 @@ export function PatientWorkspacePage() {
                                 onClick={() => void handleOpenAbe(rec.id)}
                                 disabled={busy}
                               >
-                                Open Shared Key
+                                Open with RSA Private Key
                               </button>
                             )}
                           </div>
@@ -811,6 +765,19 @@ export function PatientWorkspacePage() {
                               <strong>SHA-256 Message Digest (256-bit):</strong>{" "}
                               <code>{ver.sha256}</code>
                             </div>
+                            {ver.des_cipher_preview && (
+                              <div>
+                                <strong>DES 64-Bit Block Ciphertext (Hex):</strong>{" "}
+                                <code>{ver.des_cipher_preview}…</code>
+                                {ver.rsa_public_n ? (
+                                  <>
+                                    {" "}
+                                    | <strong>RSA Modulus (n = p×q):</strong>{" "}
+                                    <code>{ver.rsa_public_n}</code>
+                                  </>
+                                ) : null}
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -818,30 +785,18 @@ export function PatientWorkspacePage() {
                           <div className="record-decrypted">
                             <div className="record-decrypted-header">
                               <div className="record-decrypted-title">{dec.title}</div>
-                              <div className="btn-row">
-                                <button
-                                  type="button"
-                                  className="btn-ghost btn-sm"
-                                  onClick={() => {
-                                    setLabText(`${dec.title}: ${JSON.stringify(dec.payload)}`);
-                                    setSubTab("cryptolab");
-                                  }}
-                                >
-                                  Send to Crypto Lab →
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-ghost btn-sm"
-                                  onClick={() =>
-                                    setShowRawJson((prev) => ({
-                                      ...prev,
-                                      [rec.id]: !prev[rec.id],
-                                    }))
-                                  }
-                                >
-                                  {isRaw ? "Show Clinical Cards" : "View Raw JSON"}
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                className="btn-ghost btn-sm"
+                                onClick={() =>
+                                  setShowRawJson((prev) => ({
+                                    ...prev,
+                                    [rec.id]: !prev[rec.id],
+                                  }))
+                                }
+                              >
+                                {isRaw ? "Show Clinical Cards" : "View Raw JSON"}
+                              </button>
                             </div>
 
                             {!isRaw && entries.length > 0 ? (
@@ -881,7 +836,7 @@ export function PatientWorkspacePage() {
                 <div className="card-header">
                   <div>
                     <h3>Add Encrypted Clinical Record</h3>
-                    <p>Generates MD5 &amp; SHA-256 digests and encrypts before commit.</p>
+                    <p>Encrypts payload with DES and computes MD5 &amp; SHA-256 digests before commit.</p>
                   </div>
                 </div>
                 <form onSubmit={(e) => void handleCreateRecord(e)} className="form-stack">
@@ -926,12 +881,12 @@ export function PatientWorkspacePage() {
                   </label>
 
                   <label>
-                    <span>Department Access Policy</span>
+                    <span>RSA Department Sharing Policy</span>
                     <input value={abePolicy} onChange={(e) => setAbePolicy(e.target.value)} />
                   </label>
 
                   <button type="submit" className="btn-primary btn-full" disabled={busy}>
-                    Encrypt &amp; Save Record
+                    Encrypt (DES) &amp; Save Record
                   </button>
                 </form>
               </section>
@@ -939,262 +894,7 @@ export function PatientWorkspacePage() {
           </div>
         )}
 
-        {/* SUB-TAB 2: INTERACTIVE CRYPTOGRAPHY LAB (SYLLABUS ALGORITHMS) */}
-        {subTab === "cryptolab" && (
-          <div className="section-stack">
-            <section className="card">
-              <div className="card-header">
-                <div>
-                  <h3>Interactive Cryptography Workbench (6 Syllabus Algorithms)</h3>
-                  <p>
-                    Test and inspect live mathematical execution of <strong>MD5 &amp; SHA-256 Message Digests</strong>, <strong>Diffie–Hellman Key Exchange</strong>, <strong>RSA Cryptosystem</strong>, <strong>Data Encryption Standard (DES)</strong>, <strong>One-Time Pad (OTP)</strong>, and <strong>Hill Cipher</strong> on clinical EHR data.
-                  </p>
-                </div>
-              </div>
-
-              <form onSubmit={(e) => void handleRunCryptoLab(e)} className="crypto-lab-form">
-                <label className="crypto-lab-input-main">
-                  <span>Clinical Plaintext Message (M)</span>
-                  <input
-                    value={labText}
-                    onChange={(e) => setLabText(e.target.value)}
-                    placeholder="Enter clinical text or patient biomarkers…"
-                    required
-                  />
-                </label>
-                <label className="crypto-lab-input-key">
-                  <span>64-Bit DES Key (8 ASCII chars)</span>
-                  <input
-                    value={labDesKey}
-                    onChange={(e) => setLabDesKey(e.target.value)}
-                    maxLength={8}
-                    required
-                  />
-                </label>
-                <button type="submit" className="btn-primary btn-lg" disabled={busy}>
-                  {busy ? "Computing Ciphers…" : "Execute All 6 Algorithms →"}
-                </button>
-              </form>
-            </section>
-
-            {cryptoLabResult && (
-              <div className="crypto-lab-grid">
-                {/* 1. MD5 & SHA Message Digests */}
-                <section className="card crypto-algo-card">
-                  <div className="crypto-algo-header">
-                    <span className="pill pill-green">1. Message Digest &amp; Integrity</span>
-                    <span className="crypto-verified-tag">
-                      {cryptoLabResult.digests.integrity_ok ? "✓ Integrity Verified" : "Mismatch"}
-                    </span>
-                  </div>
-                  <h4>MD5 (128-bit) &amp; SHA-256 (256-bit)</h4>
-                  <p className="muted-text">
-                    Generates irreversible cryptographic hashes to detect unauthorized clinical tampering.
-                  </p>
-                  <div className="crypto-kv-list">
-                    <div className="crypto-kv-item">
-                      <span>MD5 Digest (128-bit hex)</span>
-                      <code>{cryptoLabResult.digests.md5}</code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>SHA-1 Digest (160-bit hex)</span>
-                      <code>{cryptoLabResult.digests.sha1}</code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>SHA-256 Digest (256-bit hex)</span>
-                      <code>{cryptoLabResult.digests.sha256}</code>
-                    </div>
-                  </div>
-                </section>
-
-                {/* 2. Diffie-Hellman Key Exchange */}
-                <section className="card crypto-algo-card">
-                  <div className="crypto-algo-header">
-                    <span className="pill pill-blue">2. Asymmetric Key Exchange</span>
-                    <span className="crypto-verified-tag">
-                      {cryptoLabResult.diffie_hellman.keys_match
-                        ? "✓ Shared Secret Matched"
-                        : "Mismatch"}
-                    </span>
-                  </div>
-                  <h4>Diffie–Hellman Key Exchange (DHKE)</h4>
-                  <p className="muted-text">
-                    Establishes a shared secret key K = g^(ab) mod p between Hospital (Alice) and Specialist/Cloud (Bob) over an insecure channel.
-                  </p>
-                  <div className="crypto-kv-list">
-                    <div className="crypto-kv-row-2">
-                      <div className="crypto-kv-item">
-                        <span>Public Prime (p) &amp; Base (g)</span>
-                        <code>
-                          p = {cryptoLabResult.diffie_hellman.prime_p}, g ={" "}
-                          {cryptoLabResult.diffie_hellman.generator_g}
-                        </code>
-                      </div>
-                      <div className="crypto-kv-item">
-                        <span>Derived 64-bit Session Key</span>
-                        <code>{cryptoLabResult.diffie_hellman.derived_des_key_hex}</code>
-                      </div>
-                    </div>
-                    <div className="crypto-kv-row-2">
-                      <div className="crypto-kv-item">
-                        <span>Hospital Public A = g^a mod p</span>
-                        <code>{cryptoLabResult.diffie_hellman.alice_public_A}</code>
-                      </div>
-                      <div className="crypto-kv-item">
-                        <span>Specialist Public B = g^b mod p</span>
-                        <code>{cryptoLabResult.diffie_hellman.bob_public_B}</code>
-                      </div>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>Shared Secret S = B^a mod p = A^b mod p</span>
-                      <code>
-                        Alice: {cryptoLabResult.diffie_hellman.shared_secret_alice} == Bob:{" "}
-                        {cryptoLabResult.diffie_hellman.shared_secret_bob}
-                      </code>
-                    </div>
-                  </div>
-                </section>
-
-                {/* 3. RSA Cryptosystem */}
-                <section className="card crypto-algo-card">
-                  <div className="crypto-algo-header">
-                    <span className="pill pill-amber">3. Public-Key Cryptosystem</span>
-                    <span className="crypto-verified-tag">
-                      {cryptoLabResult.rsa.verified ? "✓ Decryption Verified" : "Error"}
-                    </span>
-                  </div>
-                  <h4>RSA Encryption &amp; Decryption</h4>
-                  <p className="muted-text">
-                    Asymmetric encryption using n = p × q, φ(n) = (p−1)(q−1), C = M^e mod n, and M = C^d mod n.
-                  </p>
-                  <div className="crypto-kv-list">
-                    <div className="crypto-kv-row-2">
-                      <div className="crypto-kv-item">
-                        <span>Primes (p, q) &amp; Modulus (n)</span>
-                        <code>
-                          p={cryptoLabResult.rsa.p}, q={cryptoLabResult.rsa.q}, n=
-                          {cryptoLabResult.rsa.modulus_n}
-                        </code>
-                      </div>
-                      <div className="crypto-kv-item">
-                        <span>Public (e) &amp; Private (d)</span>
-                        <code>
-                          e={cryptoLabResult.rsa.public_exponent_e}, d=
-                          {cryptoLabResult.rsa.private_exponent_d}
-                        </code>
-                      </div>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>Ciphertext Blocks C = M^e mod n (first 10 blocks)</span>
-                      <code>
-                        [{cryptoLabResult.rsa.ciphertext_blocks.slice(0, 10).join(", ")}…]
-                      </code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>Decrypted Plaintext M = C^d mod n</span>
-                      <code>{cryptoLabResult.rsa.decrypted_text}</code>
-                    </div>
-                  </div>
-                </section>
-
-                {/* 4. Data Encryption Standard (DES) */}
-                <section className="card crypto-algo-card">
-                  <div className="crypto-algo-header">
-                    <span className="pill pill-blue">4. Symmetric Block Cipher</span>
-                    <span className="crypto-verified-tag">
-                      {cryptoLabResult.des.verified ? "✓ 16-Round Feistel OK" : "Error"}
-                    </span>
-                  </div>
-                  <h4>Data Encryption Standard (DES)</h4>
-                  <p className="muted-text">
-                    64-bit block cipher with Initial Permutation (IP), 16 Feistel rounds (Expansion E, 8 S-boxes, P-box), and 48-bit round subkeys.
-                  </p>
-                  <div className="crypto-kv-list">
-                    <div className="crypto-kv-item">
-                      <span>64-Bit DES Key (ASCII)</span>
-                      <code>{cryptoLabResult.des.key_ascii}</code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>DES Ciphertext (Hex)</span>
-                      <code>{cryptoLabResult.des.ciphertext_hex}</code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>Decrypted Plaintext (Reversed 16 Subkeys)</span>
-                      <code>{cryptoLabResult.des.decrypted_text}</code>
-                    </div>
-                  </div>
-                </section>
-
-                {/* 5. One-Time Pad (OTP) */}
-                <section className="card crypto-algo-card">
-                  <div className="crypto-algo-header">
-                    <span className="pill pill-slate">5. Information-Theoretic Stream Cipher</span>
-                    <span className="crypto-verified-tag">
-                      {cryptoLabResult.one_time_pad.verified ? "✓ Perfect Secrecy XOR" : "Error"}
-                    </span>
-                  </div>
-                  <h4>One-Time Pad (Vernam XOR Cipher)</h4>
-                  <p className="muted-text">
-                    Bitwise XOR (C_i = P_i ⊕ K_i) with a fresh, equal-length random key stream K.
-                  </p>
-                  <div className="crypto-kv-list">
-                    <div className="crypto-kv-item">
-                      <span>Random Pad Key Stream K (Hex)</span>
-                      <code>{cryptoLabResult.one_time_pad.pad_key_hex}</code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>OTP Ciphertext C = P ⊕ K (Hex)</span>
-                      <code>{cryptoLabResult.one_time_pad.ciphertext_hex}</code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>Recovered Plaintext P = C ⊕ K</span>
-                      <code>{cryptoLabResult.one_time_pad.decrypted_text}</code>
-                    </div>
-                  </div>
-                </section>
-
-                {/* 6. Hill Cipher */}
-                <section className="card crypto-algo-card">
-                  <div className="crypto-algo-header">
-                    <span className="pill pill-amber">6. Polygraphic Matrix Cipher</span>
-                    <span className="crypto-verified-tag">
-                      {cryptoLabResult.hill_cipher.verified ? "✓ Matrix Inverse OK" : "Error"}
-                    </span>
-                  </div>
-                  <h4>Hill Cipher (2×2 Matrix mod 26)</h4>
-                  <p className="muted-text">
-                    Encrypts letter digrams via C = K · P mod 26 and decrypts via modular inverse matrix K⁻¹ mod 26.
-                  </p>
-                  <div className="crypto-kv-list">
-                    <div className="crypto-kv-row-2">
-                      <div className="crypto-kv-item">
-                        <span>Key Matrix K (mod 26)</span>
-                        <code>
-                          [[{cryptoLabResult.hill_cipher.key_matrix[0].join(", ")}], [
-                          {cryptoLabResult.hill_cipher.key_matrix[1].join(", ")}]]
-                        </code>
-                      </div>
-                      <div className="crypto-kv-item">
-                        <span>Normalized Alphabetic Input</span>
-                        <code>{cryptoLabResult.hill_cipher.normalized_plaintext}</code>
-                      </div>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>Hill Ciphertext (C = K·P mod 26)</span>
-                      <code>{cryptoLabResult.hill_cipher.ciphertext}</code>
-                    </div>
-                    <div className="crypto-kv-item">
-                      <span>Decrypted Output (P = K⁻¹·C mod 26)</span>
-                      <code>{cryptoLabResult.hill_cipher.decrypted_text}</code>
-                    </div>
-                  </div>
-                </section>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* SUB-TAB 3: ENCRYPTED AI DISEASE RISK PREDICTION */}
+        {/* SUB-TAB 2: AI DISEASE RISK PREDICTION */}
         {subTab === "predictions" && user?.role !== "auditor" && (
           <div className="section-stack">
             <section className="card">
@@ -1202,7 +902,7 @@ export function PatientWorkspacePage() {
                 <div>
                   <h3>Encrypted Multi-Disease AI Risk Modeling</h3>
                   <p>
-                    Patient biomarkers are normalized and encrypted before cloud evaluation. Supports 4 clinical cohorts (Diabetes, Coronary Heart Disease, Liver Disease, Chronic Kidney Disease) with TreeSHAP explainability.
+                    Patient biomarkers are normalized and encrypted before evaluation. Supports 4 clinical cohorts (Diabetes, Coronary Heart Disease, Liver Disease, Chronic Kidney Disease) with TreeSHAP explainability.
                   </p>
                 </div>
                 <div className="model-controls">
@@ -1414,7 +1114,7 @@ export function PatientWorkspacePage() {
           </div>
         )}
 
-        {/* SUB-TAB 4: CLINICAL AI ASSISTANT */}
+        {/* SUB-TAB 3: CLINICAL AI ASSISTANT */}
         {subTab === "assistant" && user?.role !== "auditor" && (
           <section className="card">
             <div className="card-header">
@@ -1488,7 +1188,7 @@ export function PatientWorkspacePage() {
           </section>
         )}
 
-        {/* SUB-TAB 5: CONSENT GOVERNANCE & FHIR EXPORT */}
+        {/* SUB-TAB 4: CONSENT GOVERNANCE & FHIR EXPORT */}
         {subTab === "governance" && user?.role !== "auditor" && (
           <div className="section-stack">
             {(user?.role === "patient" || user?.role === "admin") && (

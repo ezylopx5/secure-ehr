@@ -48,11 +48,11 @@ export function Layout({ activeTab, onSelectTab, children }: LayoutProps) {
                 <span className="brand-title">AegisEHR</span>
                 <span className="security-live-pill">
                   <span className="pulse-dot" />
-                  Crypto Suite Active
+                  Secured Clinical Portal
                 </span>
               </div>
               <span className="brand-subtitle">
-                DES • RSA • Diffie–Hellman • MD5 &amp; SHA-256 • OTP &amp; Hill Cipher
+                DES Encryption • RSA Key Sharing • MD5 &amp; SHA-256 Digests
               </span>
             </div>
           </div>
@@ -67,7 +67,7 @@ export function Layout({ activeTab, onSelectTab, children }: LayoutProps) {
                 <rect x="3" y="4" width="18" height="16" rx="2" />
                 <path d="M7 8h10M7 12h6M7 16h8" />
               </svg>
-              Patient Workspace &amp; Crypto Lab
+              Patient Workspace
             </button>
             {canViewAudit && (
               <button
@@ -79,7 +79,7 @@ export function Layout({ activeTab, onSelectTab, children }: LayoutProps) {
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                   <path d="m9 12 2 2 4-4" />
                 </svg>
-                MD5 / SHA Audit Ledger
+                Audit Ledger
               </button>
             )}
           </nav>

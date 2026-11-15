@@ -1,52 +1,97 @@
-# AegisEHR — Secure AI-Powered Electronic Health Record Platform
+# AegisEHR — Secure Healthcare Information System & Clinical AI Platform
 
-AegisEHR is an end-to-end cryptographically secured Electronic Health Record (EHR) and Clinical Decision-Support Platform. It integrates **classical and foundational cryptographic algorithms** (**MD5 & SHA-256 Message Digests**, **Diffie–Hellman Key Exchange**, **RSA Cryptosystem**, **Data Encryption Standard (DES)**, **One-Time Pad (OTP)**, and **Hill Cipher**) with **Multi-Disease Machine Learning (`XGBoost` + `TreeSHAP`)**, **LangGraph Clinical AI**, **HL7 FHIR R4 interoperability**, and a **tamper-evident hash-chained Audit Ledger**.
+**Live Deployment:** [https://secure-ehr.vercel.app](https://secure-ehr.vercel.app)  
+**GitHub Repository:** [https://github.com/ezylopx5/secure-ehr](https://github.com/ezylopx5/secure-ehr)
 
----
-**Live Production Portal:** https://secure-ehr.vercel.app/
+AegisEHR is an end-to-end **Electronic Health Record (EHR) and Privacy-Preserving Clinical Risk Prediction Platform** built with **FastAPI**, **React 18 + TypeScript**, and **LightGBM / TreeSHAP**. Instead of using unnecessary or artificial cryptographic tabs, AegisEHR places **three foundational cryptographic algorithms directly in their natural EHR workflows**:
 
-## Core Cryptographic & AI Capabilities
-
-1. **MD5 & SHA-256 Message Digests for Record Integrity Verification**
-   - Every clinical record (`MedicalRecord`), patient demographic profile (`Patient`), and audit block generates 128-bit **MD5** and 256-bit **SHA-256** message digests ([`classical_crypto.py`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/classical_crypto.py), [`integrity.py`](file:///Users/haxx_sh/Documents/secure-ehr/backend/app/crypto/integrity.py)).
-   - Clicking **Verify MD5 & SHA-256** in the portal recomputes both digests over the canonical JSON payload to detect any unauthorized modification or database tampering.
-
-2. **Symmetric & Classical Record Encryption (`DES`, `One-Time Pad`, `Hill Cipher`, `AES-256-GCM`)**
-   - **Data Encryption Standard (DES):** Full 16-round Feistel network (`IP`, Expansion `E`, 8 S-boxes, P-box, 56-bit key schedule) operating on 64-bit blocks.
-   - **One-Time Pad (OTP):** Bitwise XOR stream cipher ($C_i = P_i \oplus K_i$) with equal-length random pad keys.
-   - **Hill Cipher:** Polygraphic $2 \times 2$ matrix substitution modulo 26 ($C = K \cdot P \bmod 26$, $P = K^{-1} \cdot C \bmod 26$).
-   - **Envelope Storage:** Database columns are sealed at rest with per-row keys.
-
-3. **Asymmetric Key Exchange & Record Sharing (`Diffie–Hellman` & `RSA Cryptosystem`)**
-   - **Diffie–Hellman Key Exchange (DHKE):** Establishes shared session keys ($A = g^a \bmod p$, $B = g^b \bmod p$, $S = g^{ab} \bmod p$) between the Hospital Portal and Specialist / Cloud AI nodes.
-   - **RSA Cryptosystem:** Asymmetric public/private key generation ($n = p \times q$, $\phi(n) = (p-1)(q-1)$, $e, d$) and modular exponentiation ($C = M^e \bmod n$, $M = C^d \bmod n$) for secure cross-departmental sharing.
-
-4. **Interactive Cryptography Workbench (`POST /api/crypto/lab`)**
-   - Built-in **Crypto Algorithms Lab** tab in the React clinical portal allowing users and examiners to enter any patient record or clinical text and inspect live outputs of **MD5/SHA-256**, **Diffie–Hellman**, **RSA**, **DES**, **One-Time Pad**, and **Hill Cipher**.
-
-5. **Multi-Disease AI Risk Prediction (`XGBoost` + `TreeSHAP` + Conformal Intervals)**
-   - Trained clinical risk models for **Type-2 Diabetes**, **Coronary Heart Disease**, **Liver Disease**, and **Chronic Kidney Disease** with exact **TreeSHAP** biomarker attributions and **90% Split Conformal Prediction** intervals.
-
-6. **PII-Scrubbed LangGraph Clinical Assistant & Signed HL7 FHIR R4 Export**
-   - 3-node `LangGraph` pipeline (`scrub_input → build_context → generate_reply`) that redacts phone numbers, emails, and IDs before summarizing consented clinical records.
-   - Exports consented patient records as **HL7 FHIR R4 Bundles** signed with `SHA-256` and `HMAC-SHA256`.
+1. **Data Encryption Standard (DES)** — Symmetric 64-bit Feistel block cipher (16 rounds, Initial Permutation $IP$, 32-to-48-bit Expansion $E$, 8 S-boxes, P-box, and $FP = IP^{-1}$) for encrypting and decrypting clinical record payloads at rest (`backend/app/crypto/classical_crypto.py`).
+2. **RSA Public-Key Cryptosystem** — Asymmetric encryption and decryption ($n = p \times q$, $\phi(n) = (p-1)(q-1)$, $e \cdot d \equiv 1 \pmod{\phi(n)}$, $C = M^e \bmod n$, $M = C^d \bmod n$) for wrapping and sharing clinical record keys across authorized doctors and hospital departments.
+3. **MD5 & SHA-256 Message Digests** — Dual cryptographic hashing (128-bit MD5 + 256-bit SHA-256) to verify clinical record integrity (`GET /api/patients/{id}/records/{rid}/verify`) and chain every clinical action into a tamper-evident SHA-256 audit ledger.
 
 ---
 
-## Demo Accounts (One-Click Persona Launch Available on Login Page)
+## Core Architecture & Features
 
-| Persona | Username | Password | Capabilities |
+```mermaid
+flowchart LR
+    subgraph Client["Clinician / Patient Portal (React 18 + TypeScript)"]
+        UI["Clinical Workspace & Audit Ledger"]
+    end
+
+    subgraph Security["3-Pillar Cryptographic Engine (FastAPI)"]
+        DES["1. DES Symmetric Cipher\n16-Round Feistel Network\nEncrypts Clinical Records"]
+        RSA["2. RSA Public-Key Cryptosystem\nC = M^e mod n / M = C^d mod n\nDoctor & Dept Key Sharing"]
+        HASH["3. MD5 & SHA-256 Digests\nRecord Integrity Verification\n& Chained Audit Ledger"]
+    end
+
+    subgraph AI["Clinical AI & Interoperability"]
+        ML["Multi-Disease Risk Engine\nLightGBM + Exact TreeSHAP"]
+        CHAT["PII-Scrubbing Clinical Assistant"]
+        FHIR["Signed HL7 FHIR R4 Bundle Export"]
+    end
+
+    UI <-->|JWT Bearer Auth| DES
+    DES <--> RSA
+    RSA <--> HASH
+    DES <--> AI
+```
+
+### 1. Where Each Cryptographic Algorithm is Used in the EHR
+| EHR Workflow Stage | Cryptographic Algorithm Used | Mathematical Operation & Purpose | Code Location |
 | :--- | :--- | :--- | :--- |
-| **Cardiology Doctor** | `doctor1` | `Doctor12345` | Decrypt consented records, run Crypto Lab, execute AI disease models & share records |
-| **Patient** | `patient1` | `Patient12345` | View personal lab panels, inspect AI risk drivers & grant/revoke doctor consent |
-| **Security Auditor** | `auditor1` | `Auditor12345` | Verify MD5 & SHA-256 record digests & validate the append-only audit hash chain |
-| **System Admin** | `admin` | `Admin12345` | Enroll patients, break-glass access, run Crypto Lab & verify audit ledger |
+| **Saving & Viewing Clinical Records** | **DES (Data Encryption Standard)** | 64-bit block cipher with 16 Feistel rounds ($L_i = R_{i-1}$, $R_i = L_{i-1} \oplus f(R_{i-1}, K_i)$) encrypts patient lab results and clinical notes before database storage. | `backend/app/crypto/classical_crypto.py` (`des_encrypt`, `des_decrypt`) |
+| **Cross-Department Record Sharing** | **RSA Cryptosystem** | Generates public key $(e, n)$ and private key $(d, n)$ where $n = p \times q$ and $d \equiv e^{-1} \pmod{\phi(n)}$. Wraps record keys via $C = M^e \bmod n$ and unwraps via $M = C^d \bmod n$ for authorized specialists. | `backend/app/crypto/classical_crypto.py` (`rsa_generate_keys`, `rsa_encrypt_text`, `rsa_decrypt_cipher`) |
+| **Record Integrity & Audit Ledger** | **MD5 & SHA-256 Message Digests** | Computes 128-bit MD5 and 256-bit SHA-256 message digests on canonical clinical JSON (`H(m) == H(m')`) and links audit blocks via $\text{block\_hash}_k = \text{SHA256}(\text{block\_hash}_{k-1} \parallel \text{payload}_k)$. | `backend/app/crypto/integrity.py`, `backend/app/services/record_service.py` |
+
+### 2. Multi-Disease Clinical AI + Exact TreeSHAP Explainability
+- Evaluates **Type-2 Diabetes**, **Cardiovascular Disease**, **Chronic Kidney Disease**, and **Liver Disease**.
+- Computes calibrated risk probabilities (`low`, `moderate`, `high`) and exact **TreeSHAP** per-biomarker attributions rendered as interactive horizontal contribution bars in the UI.
+
+### 3. PII-Scrubbing Clinical AI Assistant & Signed HL7 FHIR R4 Export
+- Automatically scrubs direct identifiers (`[PHONE]`, `[EMAIL]`, `[SSN]`, `[MRN]`) prior to clinical summarization.
+- Exports standards-compliant **HL7 FHIR R4 Collection Bundles** (`Patient`, `Observation`, `RiskAssessment`) signed with SHA-256 and HMAC-SHA256.
 
 ---
 
 ## Quick Start (Local Development)
 
+### 1. Backend (FastAPI + Python 3.11+)
 ```bash
-# Launch both FastAPI backend (:8000) and React Vite frontend (:5173)
-./run_demo.sh
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
+- **API Docs (Swagger UI):** `http://localhost:8000/docs`
+- **Automated Test Suite:**
+  ```bash
+  cd backend
+  ./.venv/bin/pytest -q
+  ```
+
+### 2. Frontend (React 18 + Vite + TypeScript)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+- **Web Application:** `http://localhost:5173`
+
+---
+
+## Pre-Seeded Demo Accounts (One-Click Persona Switcher)
+
+| Role | Email | Password | Department | Capabilities |
+| :--- | :--- | :--- | :--- | :--- |
+| **Doctor** | `dr.patel@nitsurat.ac.in` | `Doctor@123` | `cardiology` | Encrypt records (DES), share records (RSA), verify MD5/SHA-256 digests, run AI risk & FHIR export |
+| **Patient** | `arjun.mehta@patient.org` | `Patient@123` | `general` | View own decrypted records, grant or revoke doctor consent |
+| **Auditor** | `auditor@nitsurat.ac.in` | `Auditor@123` | `compliance` | Verify MD5 & SHA-256 record digests and validate the SHA-256 audit hash chain without seeing plaintext PHI |
+| **Admin** | `admin@nitsurat.ac.in` | `Admin@123` | `general` | Full system oversight and cross-department record management |
+
+---
+
+## Documentation
+- **[Cryptographic Architecture (`docs/CRYPTOGRAPHY.md`)](docs/CRYPTOGRAPHY.md)** — Mathematical formulations and EHR workflow mapping for **DES**, **RSA**, and **MD5 & SHA-256**.
+- **[Full Project Report (`docs/PROJECT_REPORT.md`)](docs/PROJECT_REPORT.md)** — Comprehensive academic project report with architecture diagrams, equations, test results, and viva reference.
