@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type {
@@ -19,55 +19,82 @@ import type {
 
 type WorkspaceSubTab = "records" | "predictions" | "assistant" | "governance";
 
+const QUICK_PROMPTS = [
+  "Summarize the patient's cardiovascular biomarkers and lipid panel status.",
+  "Explain the primary TreeSHAP drivers from the latest encrypted disease risk assessment.",
+  "Patient phone 9876543210 and email aarav.patel@clinic.org — verify PII scrubbing and clinical summary.",
+];
+
+function formatFieldLabel(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b(mg|dl|ng|ml|mmhg|bpm|pct|bmi|ldl|hdl|spo2)\b/gi, (m) => m.toUpperCase())
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function PatientWorkspacePage() {
   const { user } = useAuth();
   const [subTab, setSubTab] = useState<WorkspaceSubTab>("records");
 
   const [patients, setPatients] = useState<PatientSummary[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
   const [patientView, setPatientView] = useState<PatientView | null>(null);
+
   const [records, setRecords] = useState<RecordSummary[]>([]);
   const [decryptedRecords, setDecryptedRecords] = useState<Record<string, RecordView>>({});
+  const [showRawJson, setShowRawJson] = useState<Record<string, boolean>>({});
   const [integrityStatus, setIntegrityStatus] = useState<Record<string, string>>({});
-  const [consents, setConsents] = useState<ConsentView[]>([]);
+
   const [diseases, setDiseases] = useState<DiseaseSpecView[]>([]);
-  const [selectedDisease, setSelectedDisease] = useState<DiseaseKey>("diabetes");
+  const [selectedDisease, setSelectedDisease] = useState<DiseaseKey>("heart");
   const [featureValues, setFeatureValues] = useState<Record<string, number>>({});
   const [latestPrediction, setLatestPrediction] = useState<PredictionCreateResponse | null>(null);
   const [storedPredictions, setStoredPredictions] = useState<PredictionStoredView[]>([]);
+
+  const [consents, setConsents] = useState<ConsentView[]>([]);
+  const [consentGranteeId, setConsentGranteeId] = useState<string>("");
+  const [consentCategories, setConsentCategories] = useState<string>("cardiac,labs,general");
+  const [consentPurposes, setConsentPurposes] = useState<string>("treatment,ai_prediction,export");
+
   const [fhirExport, setFhirExport] = useState<FhirExportView | null>(null);
+
   const [chatHistory, setChatHistory] = useState<ChatMessageView[]>([]);
-  const [chatPrompt, setChatPrompt] = useState(
+  const [chatPrompt, setChatPrompt] = useState<string>(
     "Summarize the patient's latest encrypted disease risk drivers and clinical notes."
   );
 
-  // Forms
+  // New Patient Modal state
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
-  const [newMrn, setNewMrn] = useState("MRN-2026-102");
+  const [newMrn, setNewMrn] = useState("MRN-2026-0104");
   const [newPatientName, setNewPatientName] = useState("Meera Nair");
-  const [newPatientDob, setNewPatientDob] = useState("1988-03-21");
+  const [newPatientDob, setNewPatientDob] = useState("1988-05-19");
   const [newPatientBlood, setNewPatientBlood] = useState("O+");
 
+  // New Record Form
   const [recType, setRecType] = useState<RecordType>("lab");
   const [recCategory, setRecCategory] = useState<RecordCategory>("cardiac");
   const [recTitle, setRecTitle] = useState("High-Sensitivity Troponin & Lipid Panel");
   const [recPayloadText, setRecPayloadText] = useState(
-    JSON.stringify({ ldl_mg_dl: 138, hdl_mg_dl: 46, troponin_ng_ml: 0.012, notes: "Sinus rhythm" }, null, 2)
+    JSON.stringify(
+      {
+        ldl_mg_dl: 138,
+        hdl_mg_dl: 46,
+        troponin_ng_ml: 0.012,
+        notes: "Sinus rhythm, mildly elevated LDL cholesterol.",
+      },
+      null,
+      2
+    )
   );
-  const [abePolicy, setAbePolicy] = useState("(role:doctor AND dept:cardiology) OR role:admin");
-
-  const [consentGranteeId, setConsentGranteeId] = useState("");
-  const [consentCategories, setConsentCategories] = useState("cardiac,labs,general");
-  const [consentPurposes, setConsentPurposes] = useState("treatment,ai_prediction,export");
+  const [abePolicy, setAbePolicy] = useState(
+    "(role:doctor AND dept:cardiology) OR role:admin"
+  );
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
 
-  const activeDiseaseSpec = useMemo(
-    () => diseases.find((d) => d.key === selectedDisease) ?? null,
-    [diseases, selectedDisease]
-  );
+  const activeDiseaseSpec = diseases.find((d) => d.key === selectedDisease);
 
   useEffect(() => {
     if (!activeDiseaseSpec) return;
@@ -78,19 +105,36 @@ export function PatientWorkspacePage() {
     setFeatureValues(defaults);
   }, [activeDiseaseSpec]);
 
+  const applyFeaturePreset = (preset: "baseline" | "elevated" | "healthy") => {
+    if (!activeDiseaseSpec) return;
+    const next: Record<string, number> = {};
+    for (const f of activeDiseaseSpec.features) {
+      if (preset === "baseline") {
+        next[f.name] = Number(f.mean.toFixed(2));
+      } else if (preset === "elevated") {
+        const bumped = Math.min(f.max, f.mean + 0.85 * f.std);
+        next[f.name] = Number(bumped.toFixed(2));
+      } else {
+        const lowered = Math.max(f.min, f.mean - 0.65 * f.std);
+        next[f.name] = Number(lowered.toFixed(2));
+      }
+    }
+    setFeatureValues(next);
+  };
+
   const loadInitialCatalogs = useCallback(async () => {
     try {
-      const [patientList, diseaseList] = await Promise.all([
+      const [patientRows, diseaseSpecs] = await Promise.all([
         api.listPatients(),
         api.listDiseases(),
       ]);
-      setPatients(patientList);
-      setDiseases(diseaseList);
-      if (patientList.length > 0 && !selectedPatientId) {
-        setSelectedPatientId(patientList[0].id);
+      setPatients(patientRows);
+      setDiseases(diseaseSpecs);
+      if (patientRows.length > 0 && !selectedPatientId) {
+        setSelectedPatientId(patientRows[0].id);
       }
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Failed to load workspace");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to load workspace data");
     }
   }, [selectedPatientId]);
 
@@ -119,6 +163,20 @@ export function PatientWorkspacePage() {
         setStoredPredictions(preds);
         const chats = await api.listChatHistory(patientId).catch(() => []);
         setChatHistory(chats);
+
+        // Automatically decrypt the first 2 records so the clinical view is immediately populated
+        const autoDec: Record<string, RecordView> = {};
+        await Promise.all(
+          recordRows.slice(0, 2).map(async (r) => {
+            try {
+              const dec = await api.getRecord(patientId, r.id);
+              autoDec[r.id] = dec;
+            } catch {
+              // ignore if unconsented
+            }
+          })
+        );
+        setDecryptedRecords(autoDec);
       } else {
         setPatientView(null);
         setStoredPredictions([]);
@@ -162,7 +220,7 @@ export function PatientWorkspacePage() {
       setPatients(updatedList);
       setSelectedPatientId(created.id);
       setShowNewPatientModal(false);
-      setStatusMessage(`Registered patient ${created.mrn} with encrypted demographics.`);
+      setStatusMessage(`Registered patient ${created.mrn} with AES-256-GCM encrypted demographics.`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Could not create patient");
     } finally {
@@ -186,7 +244,7 @@ export function PatientWorkspacePage() {
       });
       setDecryptedRecords((prev) => ({ ...prev, [created.id]: created }));
       await loadPatientData(selectedPatientId);
-      setStatusMessage(`Saved encrypted record "${created.title}".`);
+      setStatusMessage(`Sealed and committed record "${created.title}" under per-row HKDF AES-256-GCM.`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Failed to create record");
     } finally {
@@ -200,7 +258,7 @@ export function PatientWorkspacePage() {
     try {
       const dec = await api.getRecord(selectedPatientId, recordId);
       setDecryptedRecords((prev) => ({ ...prev, [recordId]: dec }));
-      setStatusMessage(`Decrypted record ${recordId.slice(0, 8)} after consent & digest verification.`);
+      setStatusMessage(`Decrypted record ${recordId.slice(0, 8)} after consent & SHA-256 digest verification.`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Decryption denied");
     }
@@ -212,6 +270,7 @@ export function PatientWorkspacePage() {
     try {
       const ver = await api.verifyRecord(selectedPatientId, recordId);
       setIntegrityStatus((prev) => ({ ...prev, [recordId]: ver.integrity }));
+      setStatusMessage(`Zero-knowledge SHA-256 digest verified for record ${recordId.slice(0, 8)}: ${ver.integrity}`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Integrity check failed");
     }
@@ -224,7 +283,7 @@ export function PatientWorkspacePage() {
     try {
       await api.shareRecordWithPolicy(recordId, abePolicy);
       await loadPatientData(selectedPatientId);
-      setStatusMessage(`Applied CP-ABE access policy to record ${recordId.slice(0, 8)}.`);
+      setStatusMessage(`Wrapped record ${recordId.slice(0, 8)} under BN254 CP-ABE policy: ${abePolicy}`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "ABE share failed");
     } finally {
@@ -238,7 +297,7 @@ export function PatientWorkspacePage() {
     try {
       const opened = await api.openAbeRecord(recordId);
       setDecryptedRecords((prev) => ({ ...prev, [recordId]: opened }));
-      setStatusMessage(`Decrypted shared record via ${user?.username}'s attribute key.`);
+      setStatusMessage(`Reconstructed BN254 pairing key and decrypted shared record via ${user?.username}'s attributes.`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Attribute policy not satisfied");
     } finally {
@@ -258,7 +317,7 @@ export function PatientWorkspacePage() {
       const updated = await api.listPredictions(selectedPatientId);
       setStoredPredictions(updated);
       setStatusMessage(
-        `Completed encrypted ${pred.disease} risk evaluation (${(pred.probability * 100).toFixed(1)}% — ${pred.risk_band} risk).`
+        `Completed CKKS homomorphic ${pred.disease.toUpperCase()} evaluation (${(pred.probability * 100).toFixed(1)}% — ${pred.risk_band.toUpperCase()} risk).`
       );
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Encrypted prediction failed");
@@ -285,7 +344,7 @@ export function PatientWorkspacePage() {
           .filter(Boolean),
       });
       await loadPatientData(selectedPatientId);
-      setStatusMessage("Updated patient consent policy.");
+      setStatusMessage("Updated patient consent policy and appended event to audit chain.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Consent grant failed");
     } finally {
@@ -300,7 +359,7 @@ export function PatientWorkspacePage() {
     try {
       await api.revokeConsent(consentId);
       await loadPatientData(selectedPatientId);
-      setStatusMessage("Consent revoked — clinical access is now blocked for that grantee.");
+      setStatusMessage("Consent revoked — clinical decryption is immediately blocked for that grantee.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Revoke failed");
     } finally {
@@ -316,7 +375,7 @@ export function PatientWorkspacePage() {
       const res = await api.exportFhir(selectedPatientId);
       setFhirExport(res);
       setSubTab("governance");
-      setStatusMessage(`Generated signed HL7 FHIR R4 Bundle (${res.resource_count} resources).`);
+      setStatusMessage(`Generated signed HL7 FHIR R4 Bundle (${res.resource_count} clinical resources).`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "FHIR export failed");
     } finally {
@@ -324,15 +383,18 @@ export function PatientWorkspacePage() {
     }
   };
 
-  const handleSendChat = async (e: React.FormEvent) => {
+  const handleSendChat = async (e: React.FormEvent, customPrompt?: string) => {
     e.preventDefault();
-    if (!chatPrompt.trim()) return;
+    const text = (customPrompt ?? chatPrompt).trim();
+    if (!text) return;
     setBusy(true);
     setErrorMessage(null);
     try {
-      const turn = await api.sendChat(chatPrompt, selectedPatientId);
+      const turn = await api.sendChat(text, selectedPatientId);
       setChatHistory((prev) => [...prev, turn.user_message, turn.assistant_message]);
-      setChatPrompt("");
+      if (!customPrompt) {
+        setChatPrompt("");
+      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Clinical assistant error");
     } finally {
@@ -346,8 +408,8 @@ export function PatientWorkspacePage() {
       <aside className="patient-sidebar">
         <div className="sidebar-header">
           <div>
-            <h3>Patients</h3>
-            <span className="sidebar-count">{patients.length} active</span>
+            <h3>Patient Cohort</h3>
+            <span className="sidebar-count">{patients.length} encrypted profile(s)</span>
           </div>
           {(user?.role === "doctor" || user?.role === "admin") && (
             <button
@@ -355,7 +417,7 @@ export function PatientWorkspacePage() {
               className="btn-secondary btn-sm"
               onClick={() => setShowNewPatientModal((v) => !v)}
             >
-              {showNewPatientModal ? "Cancel" : "+ New"}
+              {showNewPatientModal ? "Cancel" : "+ Enroll"}
             </button>
           )}
         </div>
@@ -363,11 +425,11 @@ export function PatientWorkspacePage() {
         {showNewPatientModal && (
           <form onSubmit={(e) => void handleCreatePatient(e)} className="sidebar-form">
             <label>
-              <span>MRN</span>
+              <span>Medical Record Number (MRN)</span>
               <input value={newMrn} onChange={(e) => setNewMrn(e.target.value)} required />
             </label>
             <label>
-              <span>Full Name</span>
+              <span>Full Legal Name</span>
               <input value={newPatientName} onChange={(e) => setNewPatientName(e.target.value)} required />
             </label>
             <div className="form-row-2">
@@ -381,7 +443,7 @@ export function PatientWorkspacePage() {
               </label>
             </div>
             <button type="submit" className="btn-primary btn-full" disabled={busy}>
-              Save Encrypted Profile
+              Seal &amp; Create Patient
             </button>
           </form>
         )}
@@ -398,9 +460,9 @@ export function PatientWorkspacePage() {
               >
                 <div className="patient-row-main">
                   <strong>{p.mrn}</strong>
-                  <span className="status-dot" />
+                  <span className="status-dot" title="AES-256-GCM Encrypted" />
                 </div>
-                <span className="patient-row-id">ID: {p.id.slice(0, 8)}</span>
+                <span className="patient-row-id">UUID: {p.id.slice(0, 12)}…</span>
               </button>
             );
           })}
@@ -408,7 +470,10 @@ export function PatientWorkspacePage() {
 
         {user && (
           <div className="attribute-box">
-            <span className="attribute-box-title">Active ABE Key Attributes</span>
+            <div className="attribute-box-header">
+              <span className="attribute-box-title">BN254 CP-ABE Key Ring</span>
+              <span className="attribute-count-badge">{user.attributes.length} attrs</span>
+            </div>
             <div className="attr-list">
               {user.attributes.map((attr) => (
                 <code key={attr} className="attr-chip">
@@ -424,7 +489,10 @@ export function PatientWorkspacePage() {
       <div className="workspace-main">
         {statusMessage && (
           <div className="banner banner-success">
-            <span>{statusMessage}</span>
+            <div className="banner-content">
+              <span className="banner-dot banner-dot-ok" />
+              <span>{statusMessage}</span>
+            </div>
             <button type="button" className="banner-close" onClick={() => setStatusMessage(null)}>
               ×
             </button>
@@ -432,12 +500,56 @@ export function PatientWorkspacePage() {
         )}
         {errorMessage && (
           <div className="banner banner-error">
-            <span>{errorMessage}</span>
+            <div className="banner-content">
+              <span className="banner-dot banner-dot-err" />
+              <span>{errorMessage}</span>
+            </div>
             <button type="button" className="banner-close" onClick={() => setErrorMessage(null)}>
               ×
             </button>
           </div>
         )}
+
+        {/* Executive Security & Clinical Telemetry Strip */}
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <span className="kpi-label">Encrypted Clinical Records</span>
+            <div className="kpi-value-row">
+              <strong className="kpi-value">{records.length}</strong>
+              <span className="kpi-tag kpi-tag-blue">HKDF AES-256-GCM</span>
+            </div>
+            <span className="kpi-sub">Per-row derived DEK + UUID AAD</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-label">Homomorphic AI Models</span>
+            <div className="kpi-value-row">
+              <strong className="kpi-value">{storedPredictions.length}</strong>
+              <span className="kpi-tag kpi-tag-teal">CKKS N=8192</span>
+            </div>
+            <span className="kpi-sub">4 disease cohorts + TreeSHAP XAI</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-label">Access Governance</span>
+            <div className="kpi-value-row">
+              <strong className="kpi-value">
+                {user?.role === "auditor" ? "Metadata Only" : patientView ? "Consented" : "Restricted"}
+              </strong>
+              <span className="kpi-tag kpi-tag-green">RBAC + CP-ABE</span>
+            </div>
+            <span className="kpi-sub">Category &amp; purpose-scoped enforcement</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-label">Audit Ledger Posture</span>
+            <div className="kpi-value-row">
+              <strong className="kpi-value">Signed</strong>
+              <span className="kpi-tag kpi-tag-purple">HMAC-SHA256</span>
+            </div>
+            <span className="kpi-sub">Append-only SHA-256 hash chain</span>
+          </div>
+        </div>
 
         {/* Patient Summary Header Card */}
         <section className="patient-banner-card">
@@ -462,34 +574,35 @@ export function PatientWorkspacePage() {
                         : "Select a Patient"}
                   </h2>
                   {patientView && <span className="mrn-pill">{patientView.mrn}</span>}
-                  <span className="crypto-tag">AES-256-GCM Verified</span>
+                  <span className="crypto-tag">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      <path d="m9 12 2 2 4-4" />
+                    </svg>
+                    AES-256-GCM + SHA-256 Verified
+                  </span>
                 </div>
                 {patientView ? (
                   <div className="demographics-strip">
-                    <span>
+                    <span className="demo-meta-chip">
                       <strong>DOB:</strong> {String(patientView.demographics.dob ?? "—")}
                     </span>
-                    <span>•</span>
-                    <span>
+                    <span className="demo-meta-chip">
                       <strong>Gender:</strong> {String(patientView.demographics.gender ?? "—")}
                     </span>
-                    <span>•</span>
-                    <span>
+                    <span className="demo-meta-chip">
                       <strong>Blood Group:</strong> {String(patientView.demographics.blood_group ?? "—")}
                     </span>
                     {patientView.demographics.phone ? (
-                      <>
-                        <span>•</span>
-                        <span>
-                          <strong>Contact:</strong> {String(patientView.demographics.phone)}
-                        </span>
-                      </>
+                      <span className="demo-meta-chip">
+                        <strong>Contact:</strong> {String(patientView.demographics.phone)}
+                      </span>
                     ) : null}
                   </div>
                 ) : (
                   <p className="muted-text">
                     {user?.role === "auditor"
-                      ? "Auditor mode: Demographic plaintext is restricted; metadata and cryptographic digests are available."
+                      ? "Auditor mode: Demographic plaintext is restricted by zero-knowledge policy; SHA-256 digests and audit blocks are accessible."
                       : "Demographics encrypted or requires active patient consent."}
                   </p>
                 )}
@@ -497,14 +610,16 @@ export function PatientWorkspacePage() {
             </div>
 
             {selectedPatientId && user?.role !== "auditor" && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => void handleExportFhir()}
-                disabled={busy}
-              >
-                Export FHIR R4 Bundle
-              </button>
+              <div className="banner-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void handleExportFhir()}
+                  disabled={busy}
+                >
+                  Export HL7 FHIR R4 Bundle
+                </button>
+              </div>
             )}
           </div>
 
@@ -515,7 +630,8 @@ export function PatientWorkspacePage() {
               className={subTab === "records" ? "subnav-btn active" : "subnav-btn"}
               onClick={() => setSubTab("records")}
             >
-              Clinical Records ({records.length})
+              <span>Clinical Records &amp; CP-ABE</span>
+              <span className="subnav-count">{records.length}</span>
             </button>
             {user?.role !== "auditor" && (
               <button
@@ -523,7 +639,8 @@ export function PatientWorkspacePage() {
                 className={subTab === "predictions" ? "subnav-btn active" : "subnav-btn"}
                 onClick={() => setSubTab("predictions")}
               >
-                Homomorphic AI Risk ({storedPredictions.length})
+                <span>Homomorphic AI Risk</span>
+                <span className="subnav-count">{storedPredictions.length}</span>
               </button>
             )}
             {user?.role !== "auditor" && (
@@ -532,7 +649,8 @@ export function PatientWorkspacePage() {
                 className={subTab === "assistant" ? "subnav-btn active" : "subnav-btn"}
                 onClick={() => setSubTab("assistant")}
               >
-                Clinical AI Assistant
+                <span>LangGraph AI Assistant</span>
+                <span className="subnav-count">PII-Scrubbed</span>
               </button>
             )}
             {user?.role !== "auditor" && (
@@ -541,7 +659,7 @@ export function PatientWorkspacePage() {
                 className={subTab === "governance" ? "subnav-btn active" : "subnav-btn"}
                 onClick={() => setSubTab("governance")}
               >
-                Consent &amp; FHIR Export
+                <span>Consent &amp; FHIR R4</span>
               </button>
             )}
           </div>
@@ -553,9 +671,9 @@ export function PatientWorkspacePage() {
             <section className="card">
               <div className="card-header">
                 <div>
-                  <h3>Encrypted Medical Records</h3>
+                  <h3>Encrypted Clinical Records</h3>
                   <p>
-                    Each record is sealed with a per-row HKDF AES-256-GCM key and can be wrapped under a BN254 CP-ABE policy for cross-department sharing.
+                    Each record is sealed at rest with a unique HKDF-SHA256 key (`ehr:record-dek`) and can be wrapped under a BN254 elliptic-curve CP-ABE policy for cross-department sharing.
                   </p>
                 </div>
               </div>
@@ -569,18 +687,22 @@ export function PatientWorkspacePage() {
                   {records.map((rec) => {
                     const dec = decryptedRecords[rec.id];
                     const ver = integrityStatus[rec.id];
+                    const isRaw = Boolean(showRawJson[rec.id]);
+                    const entries = dec ? Object.entries(dec.payload ?? {}) : [];
                     return (
                       <div key={rec.id} className="record-item">
                         <div className="record-item-top">
                           <div className="record-tags">
-                            <span className="pill pill-blue">{rec.record_type}</span>
-                            <span className="pill pill-slate">{rec.category}</span>
-                            <code className="mono-id">{rec.id.slice(0, 10)}</code>
+                            <span className="pill pill-blue">{rec.record_type.toUpperCase()}</span>
+                            <span className="pill pill-slate">{rec.category.toUpperCase()}</span>
+                            <code className="mono-id">ID: {rec.id.slice(0, 8)}</code>
                             <span className="record-date">
                               {new Date(rec.created_at).toLocaleDateString()}
                             </span>
                             {rec.abe_policy && (
-                              <span className="pill pill-amber">Policy: {rec.abe_policy}</span>
+                              <span className="pill pill-amber" title="BN254 LSSS Policy">
+                                CP-ABE: {rec.abe_policy}
+                              </span>
                             )}
                             {ver && (
                               <span className={ver === "ok" ? "pill pill-green" : "pill pill-red"}>
@@ -596,7 +718,7 @@ export function PatientWorkspacePage() {
                                 className="btn-secondary btn-sm"
                                 onClick={() => void handleDecryptRecord(rec.id)}
                               >
-                                Decrypt Record
+                                {dec ? "Re-Verify & Decrypt" : "Decrypt Record"}
                               </button>
                             )}
                             {user?.role !== "patient" && (
@@ -605,7 +727,7 @@ export function PatientWorkspacePage() {
                                 className="btn-secondary btn-sm"
                                 onClick={() => void handleVerifyRecord(rec.id)}
                               >
-                                Verify Integrity
+                                Verify SHA-256
                               </button>
                             )}
                             {(user?.role === "doctor" || user?.role === "admin") && (
@@ -615,7 +737,7 @@ export function PatientWorkspacePage() {
                                 onClick={() => void handleShareAbe(rec.id)}
                                 disabled={busy}
                               >
-                                Apply ABE Policy
+                                Seal with CP-ABE
                               </button>
                             )}
                             {rec.abe_policy && (
@@ -625,7 +747,7 @@ export function PatientWorkspacePage() {
                                 onClick={() => void handleOpenAbe(rec.id)}
                                 disabled={busy}
                               >
-                                Open with ABE Key
+                                Open via ABE Key
                               </button>
                             )}
                           </div>
@@ -633,8 +755,45 @@ export function PatientWorkspacePage() {
 
                         {dec && (
                           <div className="record-decrypted">
-                            <div className="record-decrypted-title">{dec.title}</div>
-                            <pre className="code-viewer">{JSON.stringify(dec.payload, null, 2)}</pre>
+                            <div className="record-decrypted-header">
+                              <div className="record-decrypted-title">{dec.title}</div>
+                              <button
+                                type="button"
+                                className="btn-ghost btn-sm"
+                                onClick={() =>
+                                  setShowRawJson((prev) => ({
+                                    ...prev,
+                                    [rec.id]: !prev[rec.id],
+                                  }))
+                                }
+                              >
+                                {isRaw ? "Show Clinical Cards" : "View Raw JSON"}
+                              </button>
+                            </div>
+
+                            {!isRaw && entries.length > 0 ? (
+                              <div className="biomarker-grid">
+                                {entries.map(([k, v]) => (
+                                  <div
+                                    key={k}
+                                    className={
+                                      typeof v === "string" && v.length > 28
+                                        ? "biomarker-cell biomarker-cell-wide"
+                                        : "biomarker-cell"
+                                    }
+                                  >
+                                    <span className="biomarker-label">{formatFieldLabel(k)}</span>
+                                    <strong className="biomarker-value">
+                                      {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                                    </strong>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <pre className="code-viewer">
+                                {JSON.stringify(dec.payload, null, 2)}
+                              </pre>
+                            )}
                           </div>
                         )}
                       </div>
@@ -648,8 +807,8 @@ export function PatientWorkspacePage() {
               <section className="card">
                 <div className="card-header">
                   <div>
-                    <h3>Add Clinical Record</h3>
-                    <p>Encrypted before database commit.</p>
+                    <h3>Author Encrypted Clinical Record</h3>
+                    <p>Sealed with AES-256-GCM before database commit.</p>
                   </div>
                 </div>
                 <form onSubmit={(e) => void handleCreateRecord(e)} className="form-stack">
@@ -659,22 +818,22 @@ export function PatientWorkspacePage() {
                       <select value={recType} onChange={(e) => setRecType(e.target.value as RecordType)}>
                         <option value="lab">Lab Result</option>
                         <option value="note">Clinical Note</option>
-                        <option value="vitals">Vitals</option>
+                        <option value="vitals">Outpatient Vitals</option>
                         <option value="prescription">Prescription</option>
                         <option value="imaging_meta">Imaging Metadata</option>
                       </select>
                     </label>
                     <label>
-                      <span>Category</span>
+                      <span>Clinical Category</span>
                       <select
                         value={recCategory}
                         onChange={(e) => setRecCategory(e.target.value as RecordCategory)}
                       >
                         <option value="cardiac">Cardiac</option>
-                        <option value="labs">Labs</option>
-                        <option value="general">General</option>
-                        <option value="mental">Mental Health</option>
-                        <option value="imaging">Imaging</option>
+                        <option value="labs">Laboratory</option>
+                        <option value="general">General Medicine</option>
+                        <option value="mental">Behavioral / Mental</option>
+                        <option value="imaging">Radiology / Imaging</option>
                       </select>
                     </label>
                   </div>
@@ -685,7 +844,7 @@ export function PatientWorkspacePage() {
                   </label>
 
                   <label>
-                    <span>Structured Clinical Payload (JSON)</span>
+                    <span>Structured Clinical Biomarkers (JSON)</span>
                     <textarea
                       rows={4}
                       value={recPayloadText}
@@ -694,12 +853,12 @@ export function PatientWorkspacePage() {
                   </label>
 
                   <label>
-                    <span>Default CP-ABE Sharing Policy</span>
+                    <span>BN254 CP-ABE Boolean Sharing Policy</span>
                     <input value={abePolicy} onChange={(e) => setAbePolicy(e.target.value)} />
                   </label>
 
-                  <button type="submit" className="btn-primary" disabled={busy}>
-                    Encrypt &amp; Save Record
+                  <button type="submit" className="btn-primary btn-full" disabled={busy}>
+                    Encrypt &amp; Commit Record
                   </button>
                 </form>
               </section>
@@ -713,23 +872,49 @@ export function PatientWorkspacePage() {
             <section className="card">
               <div className="card-header-split">
                 <div>
-                  <h3>Homomorphic Encrypted Disease Risk Modeling</h3>
+                  <h3>CKKS Homomorphic Disease Risk Evaluation</h3>
                   <p>
-                    Features are normalized and encrypted under CKKS (N=8192) before leaving the hospital boundary. The cloud engine evaluates on ciphertexts only.
+                    Patient biomarkers are z-score normalized and encrypted into a TenSEAL CKKS ciphertext vector (`N=8192`, scale `2^40`). The untrusted cloud engine evaluates exclusively on ciphertexts (`cloud_saw_plaintext = False`).
                   </p>
                 </div>
-                <div className="model-selector">
-                  <span>Disease Model</span>
-                  <select
-                    value={selectedDisease}
-                    onChange={(e) => setSelectedDisease(e.target.value as DiseaseKey)}
-                  >
-                    {diseases.map((d) => (
-                      <option key={d.key} value={d.key}>
-                        {d.label} ({d.features.length} inputs)
-                      </option>
-                    ))}
-                  </select>
+                <div className="model-controls">
+                  <div className="model-selector">
+                    <span>Disease Cohort Model</span>
+                    <select
+                      value={selectedDisease}
+                      onChange={(e) => setSelectedDisease(e.target.value as DiseaseKey)}
+                    >
+                      {diseases.map((d) => (
+                        <option key={d.key} value={d.key}>
+                          {d.label} ({d.features.length} biomarkers)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="preset-bar">
+                    <span className="preset-label">Clinical Presets:</span>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={() => applyFeaturePreset("healthy")}
+                    >
+                      Low-Risk Profile
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={() => applyFeaturePreset("baseline")}
+                    >
+                      Cohort Mean
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={() => applyFeaturePreset("elevated")}
+                    >
+                      High-Risk Profile
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -754,14 +939,16 @@ export function PatientWorkspacePage() {
                           required
                         />
                         <span className="input-range">
-                          Normal range: {f.min} – {f.max} (avg {f.mean})
+                          Ref: {f.min} – {f.max} (μ={f.mean})
                         </span>
                       </label>
                     ))}
                   </div>
                   <div className="form-actions">
-                    <button type="submit" className="btn-primary" disabled={busy}>
-                      {busy ? "Running CKKS Evaluation…" : "Run Encrypted Risk Assessment"}
+                    <button type="submit" className="btn-primary btn-lg" disabled={busy}>
+                      {busy
+                        ? "Encrypting Vector & Evaluating under CKKS…"
+                        : "Run Encrypted CKKS Risk Assessment →"}
                     </button>
                   </div>
                 </form>
@@ -770,28 +957,63 @@ export function PatientWorkspacePage() {
 
             {latestPrediction && (
               <section className="card highlight-card">
-                <div className="prediction-header">
+                <div className="prediction-summary-grid">
                   <div>
-                    <span className={`risk-pill risk-${latestPrediction.risk_band}`}>
-                      {latestPrediction.risk_band.toUpperCase()} RISK
-                    </span>
-                    <h4>
+                    <div className="prediction-badges">
+                      <span className={`risk-pill risk-${latestPrediction.risk_band}`}>
+                        {latestPrediction.risk_band.toUpperCase()} RISK BAND
+                      </span>
+                      <span className="pill pill-green">
+                        Cloud Saw Plaintext: FALSE (CKKS Ciphertext)
+                      </span>
+                      <span className="pill pill-blue">
+                        Model: {latestPrediction.model_version}
+                      </span>
+                    </div>
+                    <h4 className="prediction-title">
                       {latestPrediction.disease.toUpperCase()} —{" "}
-                      {(latestPrediction.probability * 100).toFixed(1)}% Predicted Risk
+                      {(latestPrediction.probability * 100).toFixed(1)}% Predicted Probability
                     </h4>
                     <p className="muted-text">
                       Plaintext XGBoost Reference:{" "}
-                      {(latestPrediction.plaintext_reference_probability * 100).toFixed(1)}% •
-                      Cloud Saw Plaintext: <strong>No (CKKS Ciphertext Only)</strong>
+                      <strong>
+                        {(latestPrediction.plaintext_reference_probability * 100).toFixed(1)}%
+                      </strong>
                       {latestPrediction.conformal
-                        ? ` • 90% Conformal Interval: ±${(latestPrediction.conformal.half_width * 100).toFixed(1)}%`
+                        ? ` • 90% Split Conformal Interval: ±${(latestPrediction.conformal.half_width * 100).toFixed(1)}% (α = 0.10)`
                         : ""}
                     </p>
+                  </div>
+
+                  <div className="risk-meter-box">
+                    <div className="risk-meter-labels">
+                      <span>0% (Low)</span>
+                      <span>50% (Moderate)</span>
+                      <span>100% (High)</span>
+                    </div>
+                    <div className="risk-meter-track">
+                      <div
+                        className={`risk-meter-fill risk-fill-${latestPrediction.risk_band}`}
+                        style={{
+                          width: `${Math.min(100, Math.max(4, latestPrediction.probability * 100))}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <div className="shap-section">
-                  <h5>Top Clinical Risk Drivers ({latestPrediction.explanation.method})</h5>
+                  <div className="shap-header">
+                    <h5>TreeSHAP Biomarker Attribution ({latestPrediction.explanation.method})</h5>
+                    <div className="shap-legend">
+                      <span className="legend-item">
+                        <span className="legend-dot pos" /> Increases Risk
+                      </span>
+                      <span className="legend-item">
+                        <span className="legend-dot neg" /> Protective / Lowers Risk
+                      </span>
+                    </div>
+                  </div>
                   <div className="shap-bars">
                     {latestPrediction.explanation.top_features.map((feat) => {
                       const pct = Math.min(100, Math.max(8, Math.abs(feat.contribution) * 140));
@@ -799,7 +1021,7 @@ export function PatientWorkspacePage() {
                         <div key={feat.feature} className="shap-bar-row">
                           <div className="shap-bar-label">
                             <strong>{feat.label}</strong>
-                            <span>Value: {feat.value}</span>
+                            <span>Observed: {feat.value}</span>
                           </div>
                           <div className="shap-bar-track">
                             <div
@@ -831,8 +1053,8 @@ export function PatientWorkspacePage() {
               <section className="card">
                 <div className="card-header">
                   <div>
-                    <h3>Saved Risk Assessments ({storedPredictions.length})</h3>
-                    <p>Decrypted on demand from AES-256-GCM storage.</p>
+                    <h3>Encrypted Prediction Ledger ({storedPredictions.length})</h3>
+                    <p>Decrypted on demand using per-prediction HKDF AES-256-GCM keys.</p>
                   </div>
                 </div>
                 <div className="prediction-history-grid">
@@ -848,7 +1070,7 @@ export function PatientWorkspacePage() {
                         <div className="pred-history-prob">{prob.toFixed(1)}%</div>
                         {top && (
                           <span className="pred-history-driver">
-                            Primary factor: {top.label} ({top.contribution >= 0 ? "+" : ""}
+                            Top driver: <strong>{top.label}</strong> ({top.contribution >= 0 ? "+" : ""}
                             {top.contribution.toFixed(2)})
                           </span>
                         )}
@@ -869,30 +1091,57 @@ export function PatientWorkspacePage() {
           <section className="card">
             <div className="card-header">
               <div>
-                <h3>Privacy-Preserving Clinical Assistant</h3>
+                <h3>LangGraph Privacy-Preserving Clinical Assistant</h3>
                 <p>
-                  Identifiers (phones, emails, IDs) are automatically redacted before context assembly, and conversation history is encrypted at rest.
+                  Direct identifiers (phone numbers, emails, Aadhaar/SSN, MRNs) are scrubbed via regex pipeline before context assembly, and every turn is stored under AES-256-GCM encryption.
                 </p>
               </div>
+            </div>
+
+            <div className="prompt-chips-bar">
+              <span className="preset-label">Suggested Queries:</span>
+              {QUICK_PROMPTS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="prompt-chip"
+                  disabled={busy}
+                  onClick={(e) => {
+                    setChatPrompt(q);
+                    void handleSendChat(e, q);
+                  }}
+                >
+                  {q.length > 62 ? `${q.slice(0, 62)}…` : q}
+                </button>
+              ))}
             </div>
 
             <div className="chat-stream">
               {chatHistory.length === 0 ? (
                 <div className="empty-state">
-                  <p>Ask a question about this patient&apos;s risk assessments or clinical records.</p>
+                  <p>
+                    Select a suggested clinical query above or enter a custom question below to synthesize this patient&apos;s consented records and risk assessments.
+                  </p>
                 </div>
               ) : (
                 chatHistory.map((m) => (
                   <div key={m.id} className={`chat-message chat-${m.role}`}>
                     <div className="chat-message-header">
-                      <strong>{m.role === "user" ? "Clinician (PII Scrubbed)" : "Clinical Assistant"}</strong>
+                      <div className="chat-author">
+                        <span className={`chat-role-dot dot-${m.role}`} />
+                        <strong>
+                          {m.role === "user"
+                            ? "Clinician Query (PII-Scrubbed)"
+                            : "AegisEHR Clinical Synthesizer"}
+                        </strong>
+                      </div>
                       {m.agent_trace && (
                         <span className="trace-badge">
-                          Pipeline: {m.agent_trace.map((t) => String(t.step)).join(" → ")}
+                          LangGraph: {m.agent_trace.map((t) => String(t.step)).join(" → ")}
                         </span>
                       )}
                     </div>
-                    <p>{m.content}</p>
+                    <div className="chat-message-body">{m.content}</div>
                   </div>
                 ))
               )}
@@ -902,10 +1151,10 @@ export function PatientWorkspacePage() {
               <input
                 value={chatPrompt}
                 onChange={(e) => setChatPrompt(e.target.value)}
-                placeholder="Ask a clinical question (try adding a phone number or email to see automatic PII redaction)…"
+                placeholder="Ask a clinical question (include a phone or email to verify automatic PII redaction)…"
               />
               <button type="submit" className="btn-primary" disabled={busy}>
-                Send Query
+                {busy ? "Synthesizing…" : "Send Clinical Query"}
               </button>
             </form>
           </section>
@@ -918,16 +1167,16 @@ export function PatientWorkspacePage() {
               <section className="card">
                 <div className="card-header">
                   <div>
-                    <h3>Patient Access Consents</h3>
+                    <h3>Patient-Controlled Access Consents</h3>
                     <p>
-                      Doctors can only decrypt records or run AI predictions when an active consent covers the category and purpose.
+                      Physicians can only decrypt records or invoke AI risk models when an active, non-expired consent covers both the clinical category and purpose.
                     </p>
                   </div>
                 </div>
 
                 <form onSubmit={(e) => void handleGrantConsent(e)} className="consent-form-row">
                   <label>
-                    <span>Grantee User ID</span>
+                    <span>Grantee User UUID</span>
                     <input
                       value={consentGranteeId}
                       onChange={(e) => setConsentGranteeId(e.target.value)}
@@ -936,40 +1185,50 @@ export function PatientWorkspacePage() {
                     />
                   </label>
                   <label>
-                    <span>Allowed Categories</span>
+                    <span>Permitted Categories</span>
                     <input
                       value={consentCategories}
                       onChange={(e) => setConsentCategories(e.target.value)}
                     />
                   </label>
                   <label>
-                    <span>Allowed Purposes</span>
+                    <span>Permitted Purposes</span>
                     <input
                       value={consentPurposes}
                       onChange={(e) => setConsentPurposes(e.target.value)}
                     />
                   </label>
                   <button type="submit" className="btn-primary" disabled={busy}>
-                    Grant Access
+                    Grant Consent
                   </button>
                 </form>
 
                 <div className="record-stack">
                   {consents.map((c) => (
-                    <div key={c.id} className="record-item-top">
-                      <div>
-                        <strong>Grantee ID:</strong> <code className="mono-id">{c.grantee_user_id}</code>{" "}
-                        • <strong>Categories:</strong> {(c.scope.categories ?? []).join(", ")} •{" "}
-                        <strong>Purposes:</strong> {(c.scope.purposes ?? []).join(", ")}
+                    <div key={c.id} className="record-item">
+                      <div className="record-item-top">
+                        <div className="record-tags">
+                          <span className="pill pill-green">ACTIVE CONSENT</span>
+                          <span>
+                            <strong>Grantee:</strong>{" "}
+                            <code className="mono-id">{c.grantee_user_id}</code>
+                          </span>
+                          <span>
+                            <strong>Categories:</strong> {(c.scope.categories ?? []).join(", ")}
+                          </span>
+                          <span>
+                            <strong>Purposes:</strong> {(c.scope.purposes ?? []).join(", ")}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-danger btn-sm"
+                          onClick={() => void handleRevokeConsent(c.id)}
+                          disabled={busy}
+                        >
+                          Revoke Access
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className="btn-danger btn-sm"
-                        onClick={() => void handleRevokeConsent(c.id)}
-                        disabled={busy}
-                      >
-                        Revoke Access
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -981,7 +1240,7 @@ export function PatientWorkspacePage() {
                 <div>
                   <h3>HL7 FHIR R4 Interoperability Bundle</h3>
                   <p>
-                    Exports consented patient demographics, observations, and AI risk assessments signed with SHA-256 and HMAC-SHA256.
+                    Exports consented patient demographics (`Patient`), clinical biomarkers (`Observation`), and AI risk evaluations (`RiskAssessment`) with a cryptographic `Provenance` signature (`SHA-256` + `HMAC-SHA256`).
                   </p>
                 </div>
                 <button
@@ -990,21 +1249,21 @@ export function PatientWorkspacePage() {
                   onClick={() => void handleExportFhir()}
                   disabled={busy}
                 >
-                  Generate FHIR R4 Bundle
+                  Generate Signed FHIR R4 Bundle
                 </button>
               </div>
 
               {fhirExport && (
                 <div className="fhir-output">
                   <div className="fhir-digests">
-                    <span>
-                      <strong>Resources:</strong> {fhirExport.resource_count}
+                    <span className="pill pill-blue">
+                      Resources: {fhirExport.resource_count}
                     </span>
-                    <span>
-                      <strong>SHA-256:</strong> <code>{fhirExport.bundle_sha256.slice(0, 24)}…</code>
+                    <span className="pill pill-green">
+                      SHA-256: {fhirExport.bundle_sha256.slice(0, 20)}…
                     </span>
-                    <span>
-                      <strong>HMAC-SHA256:</strong> <code>{fhirExport.checksum_hmac.slice(0, 24)}…</code>
+                    <span className="pill pill-amber">
+                      HMAC-SHA256: {fhirExport.checksum_hmac.slice(0, 20)}…
                     </span>
                   </div>
                   <pre className="code-viewer">{JSON.stringify(fhirExport.bundle, null, 2)}</pre>

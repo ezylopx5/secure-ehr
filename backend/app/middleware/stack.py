@@ -75,7 +75,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             ):
                 response.headers.setdefault(
                     key,
-                    "default-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8000; img-src 'self' data:; frame-ancestors 'none'",
+                    "default-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' http://127.0.0.1:8000; img-src 'self' data:; frame-ancestors 'none'",
                 )
             else:
                 response.headers.setdefault(key, value)
