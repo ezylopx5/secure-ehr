@@ -67,6 +67,22 @@ def test_full_clinical_and_encrypted_ai_workflow(isolated_env):
         )
         assert ver.status_code == 200
         assert ver.json()["integrity"] == "ok"
+        assert len(ver.json()["md5"]) == 32
+        assert len(ver.json()["sha256"]) == 64
+
+        lab_res = client.post(
+            "/api/crypto/lab",
+            headers=doc_headers,
+            json={"sample_text": "Lipid Panel LDL=142", "des_key": "AEGISEHR"},
+        )
+        assert lab_res.status_code == 200
+        lab_body = lab_res.json()
+        assert lab_body["digests"]["integrity_ok"] is True
+        assert lab_body["diffie_hellman"]["keys_match"] is True
+        assert lab_body["rsa"]["verified"] is True
+        assert lab_body["des"]["verified"] is True
+        assert lab_body["one_time_pad"]["verified"] is True
+        assert lab_body["hill_cipher"]["verified"] is True
 
         share = client.post(
             f"/api/records/{record_id}/share",

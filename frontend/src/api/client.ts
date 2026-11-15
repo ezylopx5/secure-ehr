@@ -4,6 +4,7 @@ import type {
   ChatMessageView,
   ChatTurnResponse,
   ConsentView,
+  CryptoLabResponse,
   DiseaseKey,
   DiseaseSpecView,
   FhirExportView,
@@ -259,5 +260,12 @@ export const api = {
 
   verifyAuditChain(): Promise<AuditVerifyView> {
     return request<AuditVerifyView>("/audit/verify");
+  },
+
+  runCryptoLab(sampleText: string, desKey = "AEGISEHR"): Promise<CryptoLabResponse> {
+    return request<CryptoLabResponse>("/crypto/lab", {
+      method: "POST",
+      body: JSON.stringify({ sample_text: sampleText, des_key: desKey }),
+    });
   },
 };

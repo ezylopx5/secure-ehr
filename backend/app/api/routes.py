@@ -21,6 +21,7 @@ from app.crypto.abe import (
     PolicyNotSatisfied,
     get_abe_authority,
 )
+from app.crypto.classical_crypto import run_all_classical_demos
 from app.db.models import Consent, MedicalRecord, Patient, User
 from app.db.session import get_db
 from app.ml.registry import DISEASES
@@ -32,6 +33,8 @@ from app.schemas import (
     ChatTurnResponse,
     ConsentGrantRequest,
     ConsentView,
+    CryptoLabRequest,
+    CryptoLabResponse,
     DiseaseFeatureView,
     DiseaseSpecView,
     FhirExportView,
@@ -771,3 +774,25 @@ def audit_verify(
         details=result,
     )
     return AuditVerifyView(**result)
+
+
+@router.post("/crypto/lab", response_model=CryptoLabResponse)
+def run_crypto_lab(
+    payload: CryptoLabRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CryptoLabResponse:
+    """Execute the 6 core syllabus cryptographic algorithms (MD5 & SHA-256,
+    Diffie-Hellman, RSA, DES, One-Time Pad, Hill Cipher) on clinical text."""
+    result = run_all_classical_demos(
+        sample_text=payload.sample_text,
+        des_key=payload.des_key,
+    )
+    audit_service.append_event(
+        db,
+        actor=_actor(current_user),
+        action="crypto.lab.run",
+        resource="crypto-workbench",
+        details={"des_key_len": len(payload.des_key)},
+    )
+    return CryptoLabResponse(**result)

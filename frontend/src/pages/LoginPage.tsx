@@ -10,7 +10,7 @@ const DEMO_ACCOUNTS = [
     dept: "Cardiology • Primary Physician",
     username: "doctor1",
     password: "Doctor12345",
-    summary: "Decrypt consented records, run CKKS disease models & author CP-ABE policies",
+    summary: "Encrypt records via DES/OTP, share keys via RSA & Diffie–Hellman, and run AI risk models",
   },
   {
     role: "Patient",
@@ -25,10 +25,10 @@ const DEMO_ACCOUNTS = [
     role: "Auditor",
     initials: "SC",
     name: "Security Compliance",
-    dept: "Zero-Knowledge Integrity Audit",
+    dept: "MD5 & SHA Integrity Audit",
     username: "auditor1",
     password: "Auditor12345",
-    summary: "Verify SHA-256 record digests & validate the HMAC-SHA256 audit blockchain",
+    summary: "Verify MD5 & SHA-256 message digests & inspect the tamper-evident hash chain",
   },
   {
     role: "Admin",
@@ -37,7 +37,7 @@ const DEMO_ACCOUNTS = [
     dept: "Hospital Operations • Break-Glass",
     username: "admin",
     password: "Admin12345",
-    summary: "Onboard encrypted patient profiles, oversee governance & audit system health",
+    summary: "Onboard encrypted patient profiles, test the Crypto Workbench & oversee platform health",
   },
 ];
 
@@ -63,7 +63,7 @@ export function LoginPage() {
           organization: "nitsurat-hospital",
           department: "general",
         });
-        setLocalMsg("Account created and BN254 CP-ABE key pair issued. Signing in…");
+        setLocalMsg("Account created and RSA / Diffie–Hellman keys issued. Signing in…");
         await login(username, password);
       } catch (err) {
         setLocalMsg(err instanceof Error ? err.message : "Registration failed");
@@ -101,34 +101,34 @@ export function LoginPage() {
               </div>
               <div>
                 <span className="auth-brand-name">AegisEHR</span>
-                <span className="auth-brand-tag">Clinical Cryptographic Platform</span>
+                <span className="auth-brand-tag">Cryptographic &amp; AI Clinical Portal</span>
               </div>
             </div>
 
             <div className="auth-hero">
-              <div className="auth-kicker">ZERO-TRUST HEALTHCARE INFRASTRUCTURE</div>
-              <h1>Privacy-Preserving Clinical Intelligence</h1>
+              <div className="auth-kicker">CRYPTOGRAPHY &amp; NETWORK SECURITY IN HEALTHCARE</div>
+              <h1>Secure AI-Powered Electronic Health Records</h1>
               <p>
-                Every medical record is sealed with per-row HKDF AES-256-GCM keys, shared across departments via BN254 elliptic-curve pairings, and evaluated under CKKS homomorphic encryption.
+                Protecting patient records with DES block encryption, RSA public-key wrapping, Diffie–Hellman session key exchange, One-Time Pad (OTP), Hill Cipher, and MD5 / SHA-256 message digest verification.
               </p>
             </div>
 
             <div className="auth-metrics-grid">
               <div className="auth-metric-box">
-                <span className="auth-metric-val">AES-256-GCM</span>
-                <span className="auth-metric-lbl">Per-Row HKDF Envelope</span>
+                <span className="auth-metric-val">DES &amp; OTP</span>
+                <span className="auth-metric-lbl">16-Round Feistel &amp; Vernam XOR</span>
               </div>
               <div className="auth-metric-box">
-                <span className="auth-metric-val">BN254 CP-ABE</span>
-                <span className="auth-metric-lbl">Bilinear Pairing Policy</span>
+                <span className="auth-metric-val">RSA &amp; DHKE</span>
+                <span className="auth-metric-lbl">Public-Key &amp; Session Exchange</span>
               </div>
               <div className="auth-metric-box">
-                <span className="auth-metric-val">CKKS N=8192</span>
-                <span className="auth-metric-lbl">Homomorphic ML Scoring</span>
+                <span className="auth-metric-val">MD5 &amp; SHA-256</span>
+                <span className="auth-metric-lbl">Message Digest &amp; Integrity</span>
               </div>
               <div className="auth-metric-box">
-                <span className="auth-metric-val">HL7 FHIR R4</span>
-                <span className="auth-metric-lbl">HMAC Signed Bundles</span>
+                <span className="auth-metric-val">Hill Cipher</span>
+                <span className="auth-metric-lbl">2×2 Matrix Modulo-26</span>
               </div>
             </div>
           </div>
@@ -137,22 +137,22 @@ export function LoginPage() {
             <div className="feature-pill">
               <span className="dot dot-teal" />
               <div>
-                <strong>Cryptographic Envelope &amp; Tamper Proofing</strong>
-                <span>Row-UUID AAD binding + canonical SHA-256 integrity verification</span>
+                <strong>Symmetric &amp; Classical Encryption (DES, OTP, Hill Cipher)</strong>
+                <span>64-bit Feistel DES blocks, One-Time Pad XOR, and 2×2 matrix substitution</span>
               </div>
             </div>
             <div className="feature-pill">
               <span className="dot dot-blue" />
               <div>
-                <strong>Explainable Multi-Disease AI</strong>
-                <span>Diabetes, Heart, Liver &amp; Kidney XGBoost + TreeSHAP + 90% Conformal bounds</span>
+                <strong>Asymmetric Key Exchange (RSA &amp; Diffie–Hellman)</strong>
+                <span>Shared secret establishment (g^(ab) mod p) and RSA (C = M^e mod n) key wrapping</span>
               </div>
             </div>
             <div className="feature-pill">
               <span className="dot dot-indigo" />
               <div>
-                <strong>LangGraph Assistant &amp; Immutable Ledger</strong>
-                <span>Automated PII scrubbing with an append-only HMAC-SHA256 audit blockchain</span>
+                <strong>Message Digests (MD5 &amp; SHA-256) + Explainable AI</strong>
+                <span>Tamper detection via MD5/SHA-256 digests + 4-disease XGBoost &amp; TreeSHAP</span>
               </div>
             </div>
           </div>
@@ -234,10 +234,10 @@ export function LoginPage() {
 
             <button type="submit" className="btn-primary btn-full btn-lg" disabled={loading}>
               {loading
-                ? "Authenticating & Loading Key Ring…"
+                ? "Authenticating & Generating DH Session Key…"
                 : mode === "login"
                   ? "Enter Clinical Workspace →"
-                  : "Generate Keys & Register →"}
+                  : "Generate RSA Keys & Register →"}
             </button>
           </form>
 

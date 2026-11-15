@@ -20,6 +20,14 @@ def canonical_json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def md5_bytes(data: bytes) -> str:
+    return hashlib.md5(data).hexdigest()
+
+
+def md5_json(obj: Any) -> str:
+    return md5_bytes(canonical_json(obj).encode())
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
