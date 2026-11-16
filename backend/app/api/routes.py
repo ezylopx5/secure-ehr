@@ -279,6 +279,14 @@ def create_patient(
         patient.user_id = payload.user_id
         db.commit()
         db.refresh(patient)
+    if current_user.role == "doctor":
+        consent_service.grant(
+            db,
+            patient=patient,
+            grantee_user_id=current_user.id,
+            categories=["cardiac", "general", "labs", "mental", "imaging"],
+            purposes=["treatment", "ai_prediction", "export"],
+        )
     audit_service.append_event(
         db,
         actor=_actor(current_user),

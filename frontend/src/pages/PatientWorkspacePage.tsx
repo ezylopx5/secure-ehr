@@ -53,7 +53,9 @@ export function PatientWorkspacePage() {
   const [storedPredictions, setStoredPredictions] = useState<PredictionStoredView[]>([]);
 
   const [consents, setConsents] = useState<ConsentView[]>([]);
-  const [consentGranteeId, setConsentGranteeId] = useState<string>("");
+  const [consentGranteeId, setConsentGranteeId] = useState<string>(
+    "53dcf78a-0d54-5e9d-800e-3561001597b0"
+  );
   const [consentCategories, setConsentCategories] = useState<string>("cardiac,labs,general");
   const [consentPurposes, setConsentPurposes] = useState<string>("treatment,ai_prediction,export");
 
@@ -475,6 +477,9 @@ export function PatientWorkspacePage() {
             <div className="attribute-box-header">
               <span className="attribute-box-title">Authorized Role Attributes</span>
               <span className="attribute-count-badge">{user.attributes.length} keys</span>
+            </div>
+            <div className="patient-item-sub" style={{ marginBottom: 8 }}>
+              UUID: {user.id}
             </div>
             <div className="attr-list">
               {user.attributes.map((attr) => (

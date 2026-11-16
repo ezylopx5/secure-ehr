@@ -197,15 +197,17 @@ Each biomarker receives an exact attribution score $\phi_j(x)$ and direction (`"
 
 ---
 
-### 6.3 Complete Evaluation Metrics Across All 4 Disease Models
+### 6.3 Complete Evaluation Metrics: XGBoost Teacher vs. Distilled Linear Surrogate
 
-The table below reports the exact evaluation metrics computed on our trained model artifacts (`version: trained-20261019183357`) across both the **20% Holdout Test/Calibration Set ($N_{\text{test}} = 80$)** and the **Full Clinical Cohort ($N = 400$)**:
+#### A. XGBoost Teacher Model Metrics (`models/{disease}_model.json`)
+The table below reports the exact evaluation metrics computed on our trained XGBoost model artifacts (`version: trained-20261019183357`) across both the **20% Holdout Test/Calibration Set ($N_{\text{test}} = 80$)** and the **Full Clinical Cohort ($N = 400$)**:
 
 | Evaluation Metric | Mathematical Formula | Diabetes (`diabetes`) | Heart Disease (`heart`) | Liver Disease (`liver`) | Chronic Kidney (`kidney`) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
 | **Input Features ($d$)** | — | $8$ | $13$ | $10$ | $24$ |
 | **Full Cohort Accuracy** | $\frac{TP + TN}{N}$ ($N=400$) | **83.50%** | **79.75%** | **81.50%** | **79.50%** |
 | **Full Cohort ROC-AUC** | $\Pr(\hat{p}_+ > \hat{p}_-)$ ($N=400$) | **0.9142** | **0.8806** | **0.9121** | **0.8864** |
+| **Full Cohort F1-Score** | $\frac{2 \cdot \text{Prec} \cdot \text{Rec}}{\text{Prec} + \text{Rec}}$ ($N=400$) | **0.8711** | **0.8220** | **0.8502** | **0.8647** |
 | **Holdout Test Accuracy** | $\frac{TP + TN}{N_{\text{test}}}$ ($N_{\text{test}}=80$) | **80.00%** | **63.75%** | **78.75%** | **68.75%** |
 | **Holdout Test Precision (PPV)** | $\frac{TP}{TP + FP}$ | **81.82%** | **76.00%** | **76.36%** | **72.46%** |
 | **Holdout Test Recall (Sensitivity)** | $\frac{TP}{TP + FN}$ | **88.24%** | **69.09%** | **91.30%** | **89.29%** |
@@ -215,7 +217,23 @@ The table below reports the exact evaluation metrics computed on our trained mod
 | **Holdout Log-Loss (Cross-Entropy)** | $-\frac{1}{N}\sum [y\ln\hat{p} + (1-y)\ln(1-\hat{p})]$ | **0.5125** | **0.6175** | **0.5132** | **0.5964** |
 | **Holdout Brier Calibration Score** | $\frac{1}{N}\sum (\hat{p}_i - y_i)^2$ (lower is better) | **0.1661** | **0.2137** | **0.1686** | **0.2070** |
 | **Holdout Confusion Matrix** | $(TP,\; TN,\; FP,\; FN)$ on $N_{\text{test}}=80$ | $(45, 19, 10, 6)$ | $(38, 13, 12, 17)$ | $(42, 21, 13, 4)$ | $(50, 5, 19, 6)$ |
-| **Conformal Half-Width ($q_{0.90}$)** | $\text{Quantile}_{0.90}(\lvert\hat{p}_{\text{surr}} - y\rvert)$ ($\alpha=0.10$) | **0.5552** | **0.5872** | **0.9257** | **0.9704** |
+
+#### B. Distilled Linear Surrogate Model Metrics (`DiseaseModel.linear_surrogate()`)
+Because encrypted dot-product evaluation ($\langle w, z \rangle + b$) requires a linear polynomial model rather than discontinuous decision-tree step functions, we distill each trained XGBoost teacher model into a z-score normalized Logistic Regression surrogate ($S = 400$ domain samples, $600$ gradient descent steps, $\text{lr} = 0.5$):
+
+| Surrogate Evaluation Metric | Diabetes (`diabetes`) | Heart Disease (`heart`) | Liver Disease (`liver`) | Chronic Kidney (`kidney`) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Surrogate Holdout Test ROC-AUC** | **0.8073** | **0.6640** | **0.8082** | **0.6555** |
+| **Surrogate Full Cohort ROC-AUC** | **0.7971** | **0.8042** | **0.7976** | **0.7633** |
+| **Surrogate Holdout Test Accuracy** | **71.25%** | **66.25%** | **56.25%** | **56.25%** |
+| **Surrogate Full Cohort Accuracy** | **67.75%** | **73.25%** | **53.00%** | **67.00%** |
+| **Surrogate Holdout F1-Score** | **0.8067** | **0.7523** | **0.4068** | **0.6465** |
+| **Surrogate Holdout Sensitivity (Recall)** | **94.12%** | **74.55%** | **26.09%** | **57.14%** |
+| **Surrogate Holdout Precision** | **70.59%** | **75.93%** | **92.31%** | **74.42%** |
+| **Surrogate Brier Score (Holdout)** | **0.2067** | **0.2203** | **0.3087** | **0.3289** |
+| **Teacher–Student Correlation ($r$)** | **0.7089** | **0.8170** | **0.5624** | **0.6519** |
+| **Teacher–Student Distillation MAE** | **0.1230** | **0.0941** | **0.3751** | **0.2982** |
+| **Conformal Half-Width ($q_{0.90}$, $\alpha=0.10$)** | **0.5552** | **0.5872** | **0.9257** | **0.9704** |
 
 #### Clinical Interpretation of Model Performance
 1. **High Clinical Sensitivity (Recall $88.2\%\text{--}91.3\%$ on Diabetes, Liver, and Kidney):** In clinical screening, false negatives ($FN$) are significantly more dangerous than false positives ($FP$). Our models achieve **88.24% sensitivity on Diabetes**, **91.30% sensitivity on Liver Disease**, and **89.29% sensitivity on Chronic Kidney Disease**, ensuring high-risk patients are reliably flagged for physician review.
