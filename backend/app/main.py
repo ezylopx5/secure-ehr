@@ -169,7 +169,7 @@ def _seed_dev_demo() -> None:
                     Consent.status == "active",
                 )
             )
-        ).scalar_one_or_none()
+        ).scalars().first()
         if consent is None:
             consent_service.grant(
                 db,
